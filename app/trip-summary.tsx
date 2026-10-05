@@ -94,6 +94,12 @@ export default function TripSummaryScreen() {
           ? `${Math.round(trip.minTemperatureC)}°C`
           : `${Math.round(trip.minTemperatureC)}–${Math.round(trip.maxTemperatureC)}°C`,
     });
+  if (cons > 0)
+    details.push({
+      icon: <BatteryMedium size={15} color={C.blue} />,
+      label: '10% battery =',
+      value: `${Math.round((trip.batteryCapacity * 10) / cons)} km`,
+    });
   if (trip.rangeAtEndKm != null)
     details.push({ icon: <BatteryMedium size={15} color={C.green} />, label: 'Range left at end', value: `${trip.rangeAtEndKm} km` });
 

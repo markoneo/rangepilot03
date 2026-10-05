@@ -204,6 +204,9 @@ export default function HomeScreen() {
             {usable.toFixed(1)} kWh · {consumption.toFixed(1)} kWh/100 km
             {reserve > 0 ? `  ·  ${Math.round(rangeReserve)} km to ${reserve}%` : ''}
           </Text>
+          <Text style={styles.heroPer10}>
+            10% battery = {Math.round((car.batteryCapacity * 10) / consumption)} km
+          </Text>
         </View>
 
         {/* Battery */}
@@ -379,6 +382,7 @@ const styles = StyleSheet.create({
   heroValue: { fontSize: 80, fontFamily: F.bold, color: C.text, letterSpacing: -4, lineHeight: 88, marginTop: 4 },
   heroUnit: { fontSize: 28, color: C.blue, letterSpacing: -0.5 },
   heroSub: { fontSize: 13, fontFamily: F.medium, color: '#93C5FD', marginTop: 4 },
+  heroPer10: { fontSize: 15, fontFamily: F.bold, color: C.text, marginTop: 8 },
   battValueWrap: { alignItems: 'center', marginTop: -4, marginBottom: 4 },
   battValue: { fontSize: 48, fontFamily: F.bold, letterSpacing: -2 },
   battPct: { fontSize: 22, color: C.textDim },

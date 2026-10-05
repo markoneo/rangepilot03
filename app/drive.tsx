@@ -155,6 +155,10 @@ export default function DriveScreen() {
   const paused = snap.phase === 'paused';
   const bColor = batteryColor(snap.battery);
   const kwhLeft = (trip.batteryCapacity * snap.usableBattery) / 100;
+  // km per 10 % of battery at the current (or learned) consumption
+  const kmPer10 = snap.consumption > 0 ? (trip.batteryCapacity * 0.1 * 100) / snap.consumption : 0;
+  const nextMark = Math.max(0, Math.ceil(snap.battery / 10) * 10 - 10);
+  const kmToNextMark = ((snap.battery - nextMark) / 10) * kmPer10;
 
   const gps = (() => {
     switch (snap.gps) {
@@ -290,6 +294,31 @@ export default function DriveScreen() {
               {kwhLeft.toFixed(1)} kWh usable · {snap.consumption.toFixed(1)} kWh/100
             </Text>
           </View>
+        </View>
+
+        {/* km per 10 % — quick mental range check */}
+        <View style={styles.per10}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.per10Label}>10% battery =</Text>
+            <Text style={styles.per10Value}>
+              {kmPer10.toFixed(0)}
+              <Text style={styles.per10Unit}> km</Text>
+            </Text>
+            <Text style={styles.per10Sub}>
+              1% = {(kmPer10 / 10).toFixed(1)} km
+              {snap.measuredConsumption != null ? ' · from your battery' : ''}
+            </Text>
+          </View>
+          {snap.battery > 0.5 && (
+            <View style={styles.per10Right}>
+              <Text style={styles.per10Label}>{nextMark}% in</Text>
+              <Text style={styles.per10Next}>
+                {kmToNextMark.toFixed(1)}
+                <Text style={styles.per10Unit}> km</Text>
+              </Text>
+              <Text style={styles.per10Sub}>check your car then</Text>
+            </View>
+          )}
         </View>
 
         {/* Live stats */}
@@ -606,6 +635,23 @@ const styles = StyleSheet.create({
   heroMetaStrong: { fontSize: 18, fontFamily: F.bold },
   heroMetaText: { fontSize: 13, fontFamily: F.medium, color: C.textDim },
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 6 },
+  per10: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.blueDim,
+    borderColor: C.blue + '55',
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    marginBottom: 12,
+  },
+  per10Right: { alignItems: 'flex-end', borderLeftWidth: 1, borderLeftColor: C.blue + '40', paddingLeft: 16 },
+  per10Label: { fontSize: 12, fontFamily: F.semibold, color: '#93C5FD', letterSpacing: 0.4 },
+  per10Value: { fontSize: 40, fontFamily: F.bold, color: C.text, letterSpacing: -1.5, lineHeight: 46 },
+  per10Next: { fontSize: 28, fontFamily: F.bold, color: C.text, letterSpacing: -1, lineHeight: 34 },
+  per10Unit: { fontSize: 16, color: C.blue, letterSpacing: 0 },
+  per10Sub: { fontSize: 11.5, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
   stat: {
     flex: 1,
     backgroundColor: C.card,
