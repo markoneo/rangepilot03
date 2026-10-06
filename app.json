@@ -11,11 +11,15 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "UIBackgroundModes": ["location", "fetch"],
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ],
         "NSLocationWhenInUseUsageDescription": "Range Pilot uses your location to track distance and speed while driving.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Range Pilot needs background location so it can keep tracking your drive when the screen is off or you switch apps.",
         "NSLocationAlwaysUsageDescription": "Range Pilot needs background location so it can keep tracking your drive when the screen is off or you switch apps."
-      }
+      },
+      "icon": "./assets/images/icon.png"
     },
     "android": {
       "permissions": [
@@ -25,7 +29,11 @@
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
         "WAKE_LOCK"
-      ]
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#191C1F"
+      }
     },
     "web": {
       "bundler": "metro",
