@@ -249,3 +249,30 @@ export async function stopBackgroundUpdates(): Promise<void> {
     // ignore
   }
 }
+
+/** One-off position (for the destination check before a drive starts). */
+export async function getCurrentPosition(): Promise<{ lat: number; lon: number } | null> {
+  if (Platform.OS === 'web') {
+    if (!isBrowser) return null;
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (p) => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 120000 }
+      );
+    });
+  }
+  try {
+    const Location = await import('expo-location');
+    const perm = await Location.getForegroundPermissionsAsync();
+    if (perm.status !== 'granted') {
+      const req = await Location.requestForegroundPermissionsAsync();
+      if (req.status !== 'granted') return null;
+    }
+    const last = await Location.getLastKnownPositionAsync({ maxAge: 120000 });
+    const p = last ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+    return { lat: p.coords.latitude, lon: p.coords.longitude };
+  } catch {
+    return null;
+  }
+}

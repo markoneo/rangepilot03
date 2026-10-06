@@ -335,6 +335,15 @@ export function setReserve(pct: number) {
   });
 }
 
+export function setDestination(d: TripState['destination']) {
+  return run(async () => {
+    if (!state) return;
+    state.destination = d ?? null;
+    await persist(true);
+    notify();
+  });
+}
+
 export async function finishTrip(endBatteryInput: number | null): Promise<TripRecord | null> {
   return run(async () => {
     if (!state) return null;

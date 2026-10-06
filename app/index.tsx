@@ -23,6 +23,11 @@ import { Zap, Navigation, Clock, ChartLine as LineChart, ChevronRight, Radio } f
 import ProfileMenu from '@/components/ProfileMenu';
 import { C, F, batteryColor, fmtMoney } from '@/constants/theme';
 import { Card, Chips, Label, NumberSheet, Stepper } from '@/components/ui';
+import { ArrivalCard, DestinationSheet } from '@/components/destination';
+import { computeRoute, routeElevation, estimateArrival, type Place, type RouteInfo, type Elevation } from '@/utils/maps';
+import { getCurrentPosition } from '@/utils/geolocation';
+import { writeJSON } from '@/utils/kv';
+import { Search } from 'lucide-react-native';
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const STYLE_ID = 'rp-battery-slider-style';
@@ -70,6 +75,36 @@ export default function HomeScreen() {
   const [consSheet, setConsSheet] = useState(false);
   const [battSheet, setBattSheet] = useState(false);
   const [active, setActive] = useState(() => Trip.getSnapshot());
+  const [destSheet, setDestSheet] = useState(false);
+  const [here, setHere] = useState<{ lat: number; lon: number } | null>(null);
+  const [check, setCheck] = useState<{
+    place: Place;
+    route: RouteInfo | null;
+    elev: Elevation | null;
+    loading: boolean;
+    error?: string;
+  } | null>(null);
+
+  const openDest = () => {
+    setDestSheet(true);
+    getCurrentPosition().then((p) => p && setHere(p));
+  };
+
+  const checkPlace = async (p: Place) => {
+    setCheck({ place: p, route: null, elev: null, loading: true });
+    const from = here ?? (await getCurrentPosition());
+    if (!from) {
+      setCheck({ place: p, route: null, elev: null, loading: false, error: 'Allow location to calculate the route from where you are.' });
+      return;
+    }
+    const route = await computeRoute(from, { lat: p.lat, lon: p.lon });
+    if (!route) {
+      setCheck({ place: p, route: null, elev: null, loading: false, error: 'Could not calculate a route.' });
+      return;
+    }
+    const elev = await routeElevation(route.points);
+    setCheck({ place: p, route, elev, loading: false });
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -209,6 +244,62 @@ export default function HomeScreen() {
           </Text>
         </View>
 
+        {/* Can I make it? */}
+        {check ? (
+          check.error ? (
+            <Card>
+              <Text style={styles.checkErr}>{check.error}</Text>
+              <TouchableOpacity onPress={() => setCheck(null)}>
+                <Text style={styles.checkLink}>Close</Text>
+              </TouchableOpacity>
+            </Card>
+          ) : (
+            <ArrivalCard
+              place={check.place}
+              km={check.route?.km ?? null}
+              minutes={check.route?.minutes ?? null}
+              climbM={check.elev?.climbM ?? null}
+              descentM={check.elev?.descentM ?? null}
+              reservePct={reserve}
+              loading={check.loading}
+              estimate={
+                check.route
+                  ? estimateArrival({
+                      capacityKwh: car.batteryCapacity,
+                      batteryPct: battery,
+                      consumption,
+                      reservePct: reserve,
+                      km: check.route.km,
+                      netM: check.elev?.netM ?? 0,
+                    })
+                  : null
+              }
+              onChange={openDest}
+              onClear={() => setCheck(null)}
+              footer={
+                !active && check.route ? (
+                  <TouchableOpacity
+                    style={styles.checkStart}
+                    activeOpacity={0.85}
+                    onPress={async () => {
+                      await writeJSON('ev_pending_destination', check.place);
+                      router.push('/drive-permission');
+                    }}
+                  >
+                    <Navigation size={16} color="#fff" />
+                    <Text style={styles.checkStartText}>Start drive to here</Text>
+                  </TouchableOpacity>
+                ) : null
+              }
+            />
+          )
+        ) : (
+          <TouchableOpacity style={styles.checkBtn} onPress={openDest} activeOpacity={0.8}>
+            <Search size={18} color={C.blue} />
+            <Text style={styles.checkBtnText}>Can I make it? Check a destination</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Battery */}
         <Card>
           <Label>Battery now</Label>
@@ -298,6 +389,15 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
+      <DestinationSheet
+        visible={destSheet}
+        near={here}
+        onClose={() => setDestSheet(false)}
+        onPick={(p) => {
+          setDestSheet(false);
+          checkPlace(p);
+        }}
+      />
       <NumberSheet
         visible={consSheet}
         title="Consumption"
@@ -387,6 +487,32 @@ const styles = StyleSheet.create({
   battValue: { fontSize: 48, fontFamily: F.bold, letterSpacing: -2 },
   battPct: { fontSize: 22, color: C.textDim },
   slider: { width: '100%', height: 48 },
+  checkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: C.blue + '88',
+    paddingVertical: 15,
+    marginBottom: 12,
+  },
+  checkBtnText: { fontSize: 15, fontFamily: F.semibold, color: C.blue },
+  checkErr: { color: C.text, fontFamily: F.medium, fontSize: 14 },
+  checkLink: { color: C.blue, fontFamily: F.semibold, fontSize: 14, marginTop: 10 },
+  checkStart: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: C.blue,
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginTop: 14,
+  },
+  checkStartText: { color: '#fff', fontFamily: F.semibold, fontSize: 15 },
   startBtn: {
     flexDirection: 'row',
     alignItems: 'center',

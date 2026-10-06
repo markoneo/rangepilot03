@@ -14,7 +14,12 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { ChevronDown, Pause, Play, Flag, Zap, MapPinOff, X, Sparkles } from 'lucide-react-native';
+import { ChevronDown, Pause, Play, Flag, Zap, MapPinOff, X, Sparkles, Search } from 'lucide-react-native';
+import { ArrivalCard, DestinationSheet } from '@/components/destination';
+import { computeRoute, routeElevation, estimateArrival, type Place } from '@/utils/maps';
+import { destinationRemainingKm } from '@/utils/trackCore';
+import { getCurrentPosition } from '@/utils/geolocation';
+import { readJSON, kv } from '@/utils/kv';
 import {
   getBackgroundPermissionStatus,
   getPermissionStatus,
@@ -56,6 +61,59 @@ export default function DriveScreen() {
   const [consSheet, setConsSheet] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
   const [bgWarning, setBgWarning] = useState<'native' | 'web' | null>(null);
+  const [destSheet, setDestSheet] = useState(false);
+  const [routing, setRouting] = useState(false);
+  const routingRef = useRef(false);
+
+  // Calculate (or refresh) the route from the current position to a place.
+  const routeTo = async (p: Place, silent = false) => {
+    if (routingRef.current) return;
+    routingRef.current = true;
+    if (!silent) setRouting(true);
+    try {
+      const t = Trip.getTrip();
+      const from = t?.lastFix ? { lat: t.lastFix.lat, lon: t.lastFix.lon } : await getCurrentPosition();
+      if (!from) {
+        if (!silent) showToast('Waiting for GPS to calculate the route', 'amber');
+        return;
+      }
+      const r = await computeRoute(from, { lat: p.lat, lon: p.lon });
+      if (!r) {
+        if (!silent) showToast('Could not calculate a route', 'amber');
+        return;
+      }
+      const el = await routeElevation(r.points);
+      await Trip.setDestination({
+        name: p.name,
+        address: p.address,
+        lat: p.lat,
+        lon: p.lon,
+        routeKm: r.km,
+        minutes: r.minutes,
+        netM: el?.netM ?? 0,
+        climbM: el?.climbM ?? 0,
+        descentM: el?.descentM ?? 0,
+        atDistanceKm: Trip.getTrip()?.distanceKm ?? 0,
+        computedAt: Date.now(),
+      });
+    } finally {
+      routingRef.current = false;
+      setRouting(false);
+    }
+  };
+
+  // Refresh the route every 10 minutes while driving (traffic / detours).
+  useEffect(() => {
+    const id = setInterval(() => {
+      const t = Trip.getTrip();
+      const d = t?.destination;
+      if (!t || !d || t.phase !== 'driving' || !t.lastFix) return;
+      if (Date.now() - d.computedAt > 10 * 60 * 1000 && (destinationRemainingKm(t) ?? 0) > 1) {
+        routeTo({ name: d.name, address: d.address, lat: d.lat, lon: d.lon }, true);
+      }
+    }, 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastGaps = useRef<number | null>(null);
 
@@ -93,6 +151,11 @@ export default function DriveScreen() {
           consumption: app?.consumption ?? 18.5,
           reservePercent: prefs.defaultReserve,
         });
+        const pending = await readJSON<Place>('ev_pending_destination');
+        if (pending) {
+          await kv.removeItem('ev_pending_destination');
+          routeTo(pending);
+        }
       }
       setReady(true);
       const bg = await getBackgroundPermissionStatus();
@@ -296,6 +359,46 @@ export default function DriveScreen() {
           </View>
         </View>
 
+        {/* Can I make it? */}
+        {trip.destination ? (
+          (() => {
+            const dest = trip.destination!;
+            const remaining = destinationRemainingKm(trip) ?? dest.routeKm;
+            const frac = dest.routeKm > 0 ? remaining / dest.routeKm : 0;
+            const est = estimateArrival({
+              capacityKwh: trip.batteryCapacity,
+              batteryPct: snap.battery,
+              consumption: snap.consumption,
+              reservePct: snap.reservePercent,
+              km: remaining,
+              netM: dest.netM * frac,
+            });
+            return (
+              <ArrivalCard
+                place={dest}
+                km={remaining}
+                minutes={dest.minutes * frac}
+                climbM={Math.round(dest.climbM * frac)}
+                descentM={Math.round(dest.descentM * frac)}
+                estimate={est}
+                reservePct={snap.reservePercent}
+                loading={routing}
+                onChange={() => setDestSheet(true)}
+                onClear={() => Trip.setDestination(null)}
+              />
+            );
+          })()
+        ) : routing ? (
+          <View style={styles.destBtn}>
+            <Text style={styles.destBtnText}>Calculating route…</Text>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.destBtn} onPress={() => setDestSheet(true)} activeOpacity={0.8}>
+            <Search size={18} color={C.blue} />
+            <Text style={styles.destBtnText}>Can I make it? Add destination</Text>
+          </TouchableOpacity>
+        )}
+
         {/* km per 10 % — quick mental range check */}
         <View style={styles.per10}>
           <View style={{ flex: 1 }}>
@@ -425,6 +528,15 @@ export default function DriveScreen() {
         </TouchableOpacity>
       </View>
 
+      <DestinationSheet
+        visible={destSheet}
+        near={trip.lastFix ? { lat: trip.lastFix.lat, lon: trip.lastFix.lon } : null}
+        onClose={() => setDestSheet(false)}
+        onPick={(p) => {
+          setDestSheet(false);
+          routeTo(p);
+        }}
+      />
       <NumberSheet
         visible={batterySheet}
         title="Battery level"
@@ -635,6 +747,19 @@ const styles = StyleSheet.create({
   heroMetaStrong: { fontSize: 18, fontFamily: F.bold },
   heroMetaText: { fontSize: 13, fontFamily: F.medium, color: C.textDim },
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 6 },
+  destBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: C.blue + '88',
+    paddingVertical: 15,
+    marginBottom: 12,
+  },
+  destBtnText: { fontSize: 15, fontFamily: F.semibold, color: C.blue },
   per10: {
     flexDirection: 'row',
     alignItems: 'center',

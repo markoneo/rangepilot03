@@ -100,6 +100,31 @@ export interface TripState {
   maxSpeedKmh: number | null;
   speedSamples: { t: number; s: number }[];
   lastSampleTs: number;
+  /** "Can I make it?" destination for this drive (optional) */
+  destination?: TripDestination | null;
+}
+
+export interface TripDestination {
+  name: string;
+  address: string;
+  lat: number;
+  lon: number;
+  /** road km from where the route was last calculated */
+  routeKm: number;
+  minutes: number;
+  netM: number;
+  climbM: number;
+  descentM: number;
+  /** trip distance (km) at the moment the route was calculated */
+  atDistanceKm: number;
+  computedAt: number;
+}
+
+/** Road km still to go, estimated from distance driven since the last route calculation. */
+export function destinationRemainingKm(s: TripState): number | null {
+  const d = s.destination;
+  if (!d) return null;
+  return Math.max(0, d.routeKm - Math.max(0, s.distanceKm - d.atDistanceKm));
 }
 
 export const CFG = {
