@@ -330,16 +330,35 @@ export default function DriveScreen() {
 
         {/* HERO: range */}
         <View style={styles.hero}>
-          <View style={styles.heroTop}>
-            <Zap size={14} color={C.blue} fill={C.blue} />
-            <Text style={styles.heroLabel}>
-              {snap.reservePercent > 0 ? `Range to ${snap.reservePercent}%` : 'Range left'}
-            </Text>
+          <View style={styles.heroRow}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.heroTop}>
+                <Zap size={14} color={C.blue} fill={C.blue} />
+                <Text style={styles.heroLabel}>
+                  {snap.reservePercent > 0 ? `Range to ${snap.reservePercent}%` : 'Range left'}
+                </Text>
+              </View>
+              <Text style={[styles.heroValue, { color: snap.usableBattery <= 0 ? C.red : C.text }]}>
+                {Math.round(snap.rangeKm)}
+                <Text style={styles.heroUnit}> km</Text>
+              </Text>
+            </View>
+            {/* Consumption — follows the battery colour, learns from battery corrections */}
+            <TouchableOpacity
+              style={[styles.consBox, { borderColor: bColor + '55', backgroundColor: bColor + '14' }]}
+              onPress={() => setConsSheet(true)}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.consValue, { color: bColor }]}>{snap.consumption.toFixed(1)}</Text>
+              <Text style={styles.consUnit}>kWh/100</Text>
+              {snap.measuredConsumption != null && (
+                <View style={styles.consLearned}>
+                  <Sparkles size={10} color={bColor} />
+                  <Text style={[styles.consLearnedText, { color: bColor }]}>learned</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
-          <Text style={[styles.heroValue, { color: snap.usableBattery <= 0 ? C.red : C.text }]}>
-            {Math.round(snap.rangeKm)}
-            <Text style={styles.heroUnit}> km</Text>
-          </Text>
           <View style={styles.battTrack}>
             <View
               style={[
@@ -354,7 +373,7 @@ export default function DriveScreen() {
           <View style={styles.heroMeta}>
             <Text style={[styles.heroMetaStrong, { color: bColor }]}>{snap.battery.toFixed(1)}%</Text>
             <Text style={styles.heroMetaText}>
-              {kwhLeft.toFixed(1)} kWh usable · {snap.consumption.toFixed(1)} kWh/100
+              {kwhLeft.toFixed(1)} kWh usable
             </Text>
           </View>
         </View>
@@ -453,31 +472,6 @@ export default function DriveScreen() {
             Correct it whenever your car shows a different %. After 5 km the app learns your real
             consumption from it.
           </Text>
-        </Card>
-
-        {/* Consumption */}
-        <Card>
-          <Label
-            right={
-              snap.measuredConsumption != null ? (
-                <View style={styles.learnedBadge}>
-                  <Sparkles size={11} color={C.blue} />
-                  <Text style={styles.learnedText}>learned</Text>
-                </View>
-              ) : null
-            }
-          >
-            Consumption
-          </Label>
-          <Stepper
-            value={snap.consumption.toFixed(1)}
-            unit="kWh/100"
-            onMinus={() => Trip.setConsumption(snap.consumption - 0.5)}
-            onPlus={() => Trip.setConsumption(snap.consumption + 0.5)}
-            onMinusLong={() => Trip.setConsumption(snap.consumption - 2)}
-            onPlusLong={() => Trip.setConsumption(snap.consumption + 2)}
-            onPressValue={() => setConsSheet(true)}
-          />
         </Card>
 
         {/* Reserve */}
@@ -725,6 +719,20 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  heroRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  consBox: {
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    minWidth: 88,
+    marginTop: 2,
+  },
+  consValue: { fontSize: 26, fontFamily: F.bold, letterSpacing: -0.8 },
+  consUnit: { fontSize: 11, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
+  consLearned: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 },
+  consLearnedText: { fontSize: 10, fontFamily: F.semibold },
   heroLabel: {
     fontSize: 12,
     fontFamily: F.semibold,
