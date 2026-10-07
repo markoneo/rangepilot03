@@ -41,7 +41,8 @@ import {
   syncActiveSessionToCloud,
   type TripRecord,
 } from './storage';
-import { fetchOutsideTemperatureC, logTunnelGap, resolveTunnelDistance } from './tunnelBridge';
+import { logTunnelGap, resolveTunnelDistance } from './tunnelBridge';
+import { getOutsideTempC } from './weather';
 
 export type { Snapshot } from './trackCore';
 
@@ -236,12 +237,14 @@ function maybeFetchTemperature() {
   state.lastTempFetchAt = now;
   const id = state.id;
   const { lat, lon } = state.lastFix;
-  fetchOutsideTemperatureC(lat, lon).then((t) => {
+  getOutsideTempC(lat, lon).then((t) => {
     if (t == null) return;
     run(() => {
       if (!state || state.id !== id) return;
       if (state.minTemperatureC == null || t < state.minTemperatureC) state.minTemperatureC = t;
       if (state.maxTemperatureC == null || t > state.maxTemperatureC) state.maxTemperatureC = t;
+      state.outsideTempC = t;
+      notify();
     });
   });
 }

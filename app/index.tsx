@@ -27,7 +27,8 @@ import { ArrivalCard, DestinationSheet } from '@/components/destination';
 import { computeRoute, routeElevation, estimateArrival, type Place, type RouteInfo, type Elevation } from '@/utils/maps';
 import { getCurrentPosition } from '@/utils/geolocation';
 import { writeJSON } from '@/utils/kv';
-import { Search } from 'lucide-react-native';
+import { Search, Snowflake } from 'lucide-react-native';
+import { getOutsideTempC, COLD_LIMIT_C } from '@/utils/weather';
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const STYLE_ID = 'rp-battery-slider-style';
@@ -84,6 +85,14 @@ export default function HomeScreen() {
     loading: boolean;
     error?: string;
   } | null>(null);
+
+  const [tempC, setTempC] = useState<number | null>(null);
+  useEffect(() => {
+    getCurrentPosition()
+      .then((p) => (p ? getOutsideTempC(p.lat, p.lon) : null))
+      .then((t) => t != null && setTempC(t))
+      .catch(() => {});
+  }, []);
 
   const openDest = () => {
     setDestSheet(true);
@@ -243,6 +252,21 @@ export default function HomeScreen() {
             10% battery = {Math.round((car.batteryCapacity * 10) / consumption)} km
           </Text>
         </View>
+
+        {tempC != null && tempC < COLD_LIMIT_C && (
+          <View style={styles.cold}>
+            <Snowflake size={18} color="#7DD3FC" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.coldTitle}>
+                {Math.round(tempC)}°C outside — expect 20–30% higher consumption
+              </Text>
+              <Text style={styles.coldBody}>
+                Realistic range today: about {Math.round(range / 1.3)}–{Math.round(range / 1.2)} km. Correct the
+                battery % during the drive and the app learns today’s real consumption.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Can I make it? */}
         {check ? (
@@ -487,6 +511,19 @@ const styles = StyleSheet.create({
   battValue: { fontSize: 48, fontFamily: F.bold, letterSpacing: -2 },
   battPct: { fontSize: 22, color: C.textDim },
   slider: { width: '100%', height: 48 },
+  cold: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+    backgroundColor: '#0C2233',
+    borderColor: '#7DD3FC44',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+  },
+  coldTitle: { color: C.text, fontFamily: F.semibold, fontSize: 14 },
+  coldBody: { color: C.textDim, fontFamily: F.regular, fontSize: 12.5, lineHeight: 18, marginTop: 3 },
   checkBtn: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -14,7 +14,8 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { ChevronDown, Pause, Play, Flag, Zap, MapPinOff, X, Sparkles, Search } from 'lucide-react-native';
+import { ChevronDown, Pause, Play, Flag, Zap, MapPinOff, X, Sparkles, Search, Snowflake } from 'lucide-react-native';
+import { COLD_LIMIT_C } from '@/utils/weather';
 import { ArrivalCard, DestinationSheet } from '@/components/destination';
 import { computeRoute, routeElevation, estimateArrival, type Place } from '@/utils/maps';
 import { destinationRemainingKm } from '@/utils/trackCore';
@@ -62,6 +63,11 @@ export default function DriveScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
   const [bgWarning, setBgWarning] = useState<'native' | 'web' | null>(null);
   const [destSheet, setDestSheet] = useState(false);
+  const [pendingBattery, setPendingBattery] = useState<number | null>(null);
+  const pendingRef = useRef<number | null>(null);
+  const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const learnHintShown = useRef(false);
+  const [coldDismissed, setColdDismissed] = useState(false);
   const [routing, setRouting] = useState(false);
   const routingRef = useRef(false);
 
@@ -242,15 +248,31 @@ export default function DriveScreen() {
 
   const onBattery = async (v: number) => {
     setBatterySheet(false);
+    setPendingBattery(null);
     const r = await Trip.setBattery(v);
     if (r.learned != null) {
       showToast(`Consumption updated to ${r.learned.toFixed(1)} kWh/100 km from your battery`, 'blue');
+    } else if (!learnHintShown.current) {
+      learnHintShown.current = true;
+      showToast('Saved. Consumption is learned once ~3% of battery is used', 'blue');
     }
   };
 
+  // ± taps are collected for a moment and applied once, so the learning
+  // sees one clean correction instead of several in-between values.
   const stepBattery = (d: number) => {
-    Trip.setBattery(Math.round((snap.battery + d) * 10) / 10);
+    const base = pendingRef.current ?? snap.battery;
+    const next = Math.max(0, Math.min(100, Math.round((base + d) * 10) / 10));
+    pendingRef.current = next;
+    setPendingBattery(next);
+    if (pendingTimer.current) clearTimeout(pendingTimer.current);
+    pendingTimer.current = setTimeout(() => {
+      const v = pendingRef.current;
+      pendingRef.current = null;
+      if (v != null) onBattery(v);
+    }, 1200);
   };
+  const shownBattery = pendingBattery ?? snap.battery;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -351,12 +373,18 @@ export default function DriveScreen() {
             >
               <Text style={[styles.consValue, { color: bColor }]}>{snap.consumption.toFixed(1)}</Text>
               <Text style={styles.consUnit}>kWh/100</Text>
-              {snap.measuredConsumption != null && (
-                <View style={styles.consLearned}>
-                  <Sparkles size={10} color={bColor} />
-                  <Text style={[styles.consLearnedText, { color: bColor }]}>learned</Text>
-                </View>
-              )}
+              <View style={styles.consLearned}>
+                {snap.learnConfidence !== 'none' && <Sparkles size={10} color={bColor} />}
+                <Text style={[styles.consLearnedText, { color: snap.learnConfidence === 'none' ? C.textMute : bColor }]}>
+                  {snap.learnConfidence === 'none'
+                    ? 'preset'
+                    : snap.learnConfidence === 'low'
+                      ? 'learning'
+                      : snap.learnConfidence === 'medium'
+                        ? 'learned'
+                        : 'learned ✓'}
+                </Text>
+              </View>
             </TouchableOpacity>
           </View>
           <View style={styles.battTrack}>
@@ -377,6 +405,26 @@ export default function DriveScreen() {
             </Text>
           </View>
         </View>
+
+        {/* Cold weather note */}
+        {snap.outsideTempC != null && snap.outsideTempC < COLD_LIMIT_C && !coldDismissed && (
+          <View style={styles.cold}>
+            <Snowflake size={18} color="#7DD3FC" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.coldTitle}>
+                {Math.round(snap.outsideTempC)}°C outside — expect 20–30% higher consumption
+              </Text>
+              <Text style={styles.coldBody}>
+                {snap.learnConfidence === 'medium' || snap.learnConfidence === 'high'
+                  ? 'Your learned consumption already includes today’s conditions.'
+                  : `Range could be closer to ${Math.round(snap.rangeKm / 1.3)}–${Math.round(snap.rangeKm / 1.2)} km. Correct the battery % after ~20 km and the app adapts.`}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => setColdDismissed(true)} hitSlop={10}>
+              <X size={16} color={C.textMute} />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Can I make it? */}
         {trip.destination ? (
@@ -460,8 +508,8 @@ export default function DriveScreen() {
         <Card style={{ marginTop: 6 }}>
           <Label>Battery — match your car</Label>
           <Stepper
-            value={`${snap.battery.toFixed(1)}%`}
-            color={bColor}
+            value={`${shownBattery.toFixed(1)}%`}
+            color={batteryColor(shownBattery)}
             onMinus={() => stepBattery(-1)}
             onPlus={() => stepBattery(1)}
             onMinusLong={() => stepBattery(-5)}
@@ -731,6 +779,19 @@ const styles = StyleSheet.create({
   },
   consValue: { fontSize: 26, fontFamily: F.bold, letterSpacing: -0.8 },
   consUnit: { fontSize: 11, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
+  cold: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+    backgroundColor: '#0C2233',
+    borderColor: '#7DD3FC44',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+  },
+  coldTitle: { color: C.text, fontFamily: F.semibold, fontSize: 14 },
+  coldBody: { color: C.textDim, fontFamily: F.regular, fontSize: 12.5, lineHeight: 18, marginTop: 3 },
   consLearned: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 },
   consLearnedText: { fontSize: 10, fontFamily: F.semibold },
   heroLabel: {

@@ -73,6 +73,10 @@ export interface TripState {
   measureBattery: number;
   measureDistance: number;
   measuredConsumption: number | null;
+  /** battery % used in the stretch the learned value is based on (confidence) */
+  measuredUsedPct?: number | null;
+  /** latest outside temperature (°C) */
+  outsideTempC?: number | null;
 
   distanceKm: number;
   estimatedKm: number;
@@ -418,6 +422,8 @@ export interface Snapshot {
   energyUsedKwh: number;
   consumption: number;
   measuredConsumption: number | null;
+  learnConfidence: 'none' | 'low' | 'medium' | 'high';
+  outsideTempC: number | null;
   reservePercent: number;
   gps: GpsStatus;
   signalAgeSec: number;
@@ -479,6 +485,15 @@ export function snapshot(s: TripState, now: number): Snapshot {
     energyUsedKwh: Math.max(0, (s.batteryCapacity * (s.startBattery - battery)) / 100),
     consumption: s.consumption,
     measuredConsumption: s.measuredConsumption,
+    learnConfidence:
+      s.measuredConsumption == null || s.measuredUsedPct == null
+        ? 'none'
+        : s.measuredUsedPct < 4
+          ? 'low'
+          : s.measuredUsedPct < 8
+            ? 'medium'
+            : 'high',
+    outsideTempC: s.outsideTempC ?? null,
     reservePercent: s.reservePercent,
     gps,
     signalAgeSec: isFinite(signalAgeMs) ? Math.floor(signalAgeMs / 1000) : -1,
@@ -507,11 +522,17 @@ export function correctBattery(s: TripState, value: number, now: number): { lear
   let learned: number | null = null;
   const dist = s.distanceKm - s.measureDistance;
   const usedPct = s.measureBattery - v;
-  if (dist >= 5 && usedPct >= 1) {
+  // The car shows whole %, so short stretches are dominated by rounding
+  // (1 % ≈ 0.5 kWh). Learn only from enough evidence, and blend with the
+  // current value instead of replacing it — more battery used = more weight.
+  if (dist >= 5 && usedPct >= 2 && (usedPct >= 3 || dist >= 15)) {
     const c = (s.batteryCapacity * (usedPct / 100) * 100) / dist;
     if (c >= 5 && c <= 50) {
-      learned = Math.round(c * 10) / 10;
+      const w = Math.max(0.2, Math.min(0.9, 1 - 1.5 / usedPct));
+      const blended = s.consumption * (1 - w) + c * w;
+      learned = Math.round(blended * 10) / 10;
       s.measuredConsumption = learned;
+      s.measuredUsedPct = usedPct;
       s.consumption = learned;
     }
   }
