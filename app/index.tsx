@@ -29,6 +29,7 @@ import { getCurrentPosition } from '@/utils/geolocation';
 import { writeJSON } from '@/utils/kv';
 import { Search, Snowflake } from 'lucide-react-native';
 import { getOutsideTempC, COLD_LIMIT_C } from '@/utils/weather';
+import { buildProfile, suggest, seasonOf, type Style } from '@/utils/learnedProfile';
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const STYLE_ID = 'rp-battery-slider-style';
@@ -164,6 +165,17 @@ export default function HomeScreen() {
     return km > 0 ? clampCons((kwh / km) * 100) : null;
   }, [trips]);
 
+  // Learned consumption per driving style for today's temperature.
+  const profile = useMemo(() => buildProfile(trips), [trips]);
+
+  // Keep the selected City / Mixed / Highway preset in sync with what has
+  // been learned for today's weather.
+  useEffect(() => {
+    if (!loaded || (preset !== 'city' && preset !== 'mixed' && preset !== 'highway')) return;
+    const s = suggest(profile, preset as Style, tempC);
+    if (s && Math.abs(s.value - consumption) >= 0.1) setConsumption(s.value);
+  }, [profile, tempC, preset, loaded]);
+
   const week = useMemo(() => {
     const since = Date.now() - 7 * 86400000;
     const w = trips.filter((t) => new Date(t.startedAt).getTime() >= since);
@@ -181,8 +193,18 @@ export default function HomeScreen() {
   const usable = (car.batteryCapacity * battery) / 100;
   const bColor = batteryColor(battery);
 
+  const presetValue = (p: (typeof PRESETS)[number]) => {
+    const s = suggest(profile, p.key as Style, tempC);
+    return s ? { value: s.value, learned: true } : { value: p.value, learned: false };
+  };
+  const anyLearned = PRESETS.some((p) => presetValue(p).learned);
+  const season = seasonOf(tempC);
+
   const presetOptions = [
-    ...PRESETS.map((p) => ({ label: p.label, value: p.key, sub: p.value.toFixed(1) })),
+    ...PRESETS.map((p) => {
+      const v = presetValue(p);
+      return { label: p.label, value: p.key, sub: v.value.toFixed(1) + (v.learned ? ' ✨' : '') };
+    }),
     ...(myAvg != null ? [{ label: 'My avg', value: 'avg' as const, sub: myAvg.toFixed(1) }] : []),
   ];
 
@@ -190,7 +212,7 @@ export default function HomeScreen() {
     setPreset(k);
     if (k === 'avg' && myAvg != null) setConsumption(myAvg);
     const p = PRESETS.find((x) => x.key === k);
-    if (p) setConsumption(p.value);
+    if (p) setConsumption(presetValue(p).value);
   };
 
   const changeCons = (v: number) => {
@@ -363,6 +385,11 @@ export default function HomeScreen() {
         <Card>
           <Label>Consumption</Label>
           <Chips options={presetOptions} value={preset} onChange={pickPreset} />
+          {anyLearned && (
+            <Text style={styles.learnNote}>
+              ✨ learned from your trips{season && tempC != null ? ` · ${season} weather (${Math.round(tempC)}°C)` : ''}
+            </Text>
+          )}
           <View style={{ height: 16 }} />
           <Stepper
             value={consumption.toFixed(1)}
@@ -524,6 +551,7 @@ const styles = StyleSheet.create({
   },
   coldTitle: { color: C.text, fontFamily: F.semibold, fontSize: 14 },
   coldBody: { color: C.textDim, fontFamily: F.regular, fontSize: 12.5, lineHeight: 18, marginTop: 3 },
+  learnNote: { fontSize: 11.5, fontFamily: F.medium, color: C.textMute, marginTop: 8 },
   checkBtn: {
     flexDirection: 'row',
     alignItems: 'center',

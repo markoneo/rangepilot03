@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { ChevronDown, Pause, Play, Flag, Zap, MapPinOff, X, Sparkles, Search, Snowflake } from 'lucide-react-native';
 import { COLD_LIMIT_C } from '@/utils/weather';
+import { buildProfile, suggest, styleOf, seasonOf, STYLES, type Profile } from '@/utils/learnedProfile';
 import { ArrivalCard, DestinationSheet } from '@/components/destination';
 import { computeRoute, routeElevation, estimateArrival, type Place } from '@/utils/maps';
 import { destinationRemainingKm } from '@/utils/trackCore';
@@ -26,7 +27,7 @@ import {
   getPermissionStatus,
   requestBackgroundPermission,
 } from '@/utils/geolocation';
-import { loadAppState, loadCarSettings, loadPrefs, formatDuration } from '@/utils/storage';
+import { loadAppState, loadCarSettings, loadPrefs, loadTrips, formatDuration } from '@/utils/storage';
 import * as Trip from '@/utils/tripTracker';
 import type { Snapshot } from '@/utils/tripTracker';
 import { C, F, batteryColor } from '@/constants/theme';
@@ -68,6 +69,13 @@ export default function DriveScreen() {
   const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const learnHintShown = useRef(false);
   const [coldDismissed, setColdDismissed] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [usualDismissed, setUsualDismissed] = useState(false);
+  useEffect(() => {
+    loadTrips()
+      .then((t) => setProfile(buildProfile(t)))
+      .catch(() => {});
+  }, []);
   const [routing, setRouting] = useState(false);
   const routingRef = useRef(false);
 
@@ -426,6 +434,45 @@ export default function DriveScreen() {
           </View>
         )}
 
+        {/* Your usual for this kind of drive (season × style), until learning kicks in */}
+        {(() => {
+          if (!profile || usualDismissed || snap.learnConfidence !== 'none') return null;
+          if (snap.distanceKm < 10 || snap.movingSec < 300) return null;
+          const style = styleOf(snap.avgSpeedKmh);
+          if (!style) return null;
+          const s = suggest(profile, style, snap.outsideTempC);
+          if (!s || Math.abs(s.value - snap.consumption) < 1) return null;
+          const season = s.source === 'season' ? seasonOf(snap.outsideTempC) : null;
+          const styleLabel = STYLES.find((x) => x.key === style)!.label.toLowerCase();
+          return (
+            <View style={styles.usual}>
+              <Sparkles size={18} color={C.blue} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.usualTitle}>
+                  Your usual for {styleLabel} driving{season ? ` in ${season} weather` : ''}: {s.value.toFixed(1)} kWh/100
+                </Text>
+                <Text style={styles.usualBody}>Learned from your past trips. Now set: {snap.consumption.toFixed(1)}.</Text>
+                <View style={styles.usualActions}>
+                  <TouchableOpacity
+                    style={styles.usualUse}
+                    onPress={() => {
+                      Trip.setConsumption(s.value);
+                      setUsualDismissed(true);
+                      showToast(`Consumption set to ${s.value.toFixed(1)} kWh/100`, 'blue');
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.usualUseText}>Use {s.value.toFixed(1)}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setUsualDismissed(true)} hitSlop={8}>
+                    <Text style={styles.usualSkip}>Keep {snap.consumption.toFixed(1)}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          );
+        })()}
+
         {/* Can I make it? */}
         {trip.destination ? (
           (() => {
@@ -779,6 +826,23 @@ const styles = StyleSheet.create({
   },
   consValue: { fontSize: 26, fontFamily: F.bold, letterSpacing: -0.8 },
   consUnit: { fontSize: 11, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
+  usual: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+    backgroundColor: C.blueDim,
+    borderColor: C.blue + '55',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+  },
+  usualTitle: { color: C.text, fontFamily: F.semibold, fontSize: 14, lineHeight: 19 },
+  usualBody: { color: C.textDim, fontFamily: F.regular, fontSize: 12.5, marginTop: 3 },
+  usualActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 10 },
+  usualUse: { backgroundColor: C.blue, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14 },
+  usualUseText: { color: '#fff', fontFamily: F.semibold, fontSize: 13.5 },
+  usualSkip: { color: C.textDim, fontFamily: F.medium, fontSize: 13.5 },
   cold: {
     flexDirection: 'row',
     gap: 10,

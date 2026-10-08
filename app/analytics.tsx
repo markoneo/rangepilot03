@@ -15,6 +15,7 @@ import {
 } from '@/utils/storage';
 import { C, F, fmtMoney } from '@/constants/theme';
 import { Chips } from '@/components/ui';
+import { buildProfile, STYLES, SEASONS } from '@/utils/learnedProfile';
 
 type Period = '7' | '30' | '90' | 'all';
 
@@ -222,6 +223,9 @@ export default function AnalyticsScreen() {
                 />
               </View>
 
+              <Text style={styles.section}>Your real consumption</Text>
+              <ProfileTable trips={trips} />
+
               <Text style={styles.section}>What affects your consumption</Text>
               {breakdowns.map((b) => (
                 <Breakdown key={b.title} {...b} />
@@ -234,6 +238,46 @@ export default function AnalyticsScreen() {
           )}
         </ScrollView>
       )}
+    </View>
+  );
+}
+
+function ProfileTable({ trips }: { trips: TripRecord[] }) {
+  const p = useMemo(() => buildProfile(trips), [trips]);
+  const any = STYLES.some((s) => SEASONS.some((se) => p[s.key][se.key]));
+  return (
+    <View style={styles.card}>
+      <View style={styles.ptRow}>
+        <View style={styles.ptHeadCell} />
+        {SEASONS.map((se) => (
+          <View key={se.key} style={[styles.ptHeadCell, { alignItems: 'center' }]}>
+            <Text style={styles.ptHead}>{se.label}</Text>
+            <Text style={styles.ptHint}>{se.hint}</Text>
+          </View>
+        ))}
+      </View>
+      {STYLES.map((s) => (
+        <View key={s.key} style={[styles.ptRow, styles.ptBody]}>
+          <View style={styles.ptHeadCell}>
+            <Text style={styles.ptHead}>{s.label}</Text>
+            <Text style={styles.ptHint}>{s.hint}</Text>
+          </View>
+          {SEASONS.map((se) => {
+            const c = p[s.key][se.key];
+            return (
+              <View key={se.key} style={styles.ptCell}>
+                <Text style={[styles.ptValue, !c && { color: C.textMute }]}>{c ? c.consumption.toFixed(1) : '—'}</Text>
+                <Text style={styles.ptHint}>{c ? `${c.trips} ${c.trips === 1 ? 'trip' : 'trips'}` : 'no data'}</Text>
+              </View>
+            );
+          })}
+        </View>
+      ))}
+      <Text style={styles.ptNote}>
+        {any
+          ? 'kWh/100 km from your trips (battery % at start and end). Your City / Mixed / Highway presets use these values for today’s weather.'
+          : 'Fills in as you finish trips of 10 km or more and enter the battery % at the end.'}
+      </Text>
     </View>
   );
 }
@@ -506,5 +550,13 @@ const styles = StyleSheet.create({
   bdValue: { fontSize: 22, fontFamily: F.bold, color: C.text, marginTop: 4 },
   bdUnit: { fontSize: 11, fontFamily: F.regular, color: C.textMute, marginTop: 2 },
   bdNote: { fontSize: 12, fontFamily: F.medium, color: C.textDim, marginTop: 10 },
+  ptRow: { flexDirection: 'row', alignItems: 'center' },
+  ptBody: { borderTopWidth: 1, borderTopColor: C.border, paddingVertical: 10 },
+  ptHeadCell: { flex: 1, paddingVertical: 4 },
+  ptCell: { flex: 1, alignItems: 'center' },
+  ptHead: { fontSize: 13, fontFamily: F.semibold, color: C.text },
+  ptHint: { fontSize: 10.5, fontFamily: F.regular, color: C.textMute, marginTop: 1 },
+  ptValue: { fontSize: 18, fontFamily: F.bold, color: C.text },
+  ptNote: { fontSize: 11.5, fontFamily: F.regular, color: C.textMute, marginTop: 8, lineHeight: 16 },
   footer: { fontSize: 11.5, fontFamily: F.regular, color: C.textMute, marginTop: 8, lineHeight: 17 },
 });
