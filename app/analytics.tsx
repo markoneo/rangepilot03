@@ -16,6 +16,7 @@ import {
 import { C, F, fmtMoney } from '@/constants/theme';
 import { Chips } from '@/components/ui';
 import { buildProfile, STYLES, SEASONS } from '@/utils/learnedProfile';
+import { loadCharges, averagePrice, CHARGE_TYPES, type ChargeRecord } from '@/utils/charges';
 
 type Period = '7' | '30' | '90' | 'all';
 
@@ -60,14 +61,16 @@ export default function AnalyticsScreen() {
   const [prefs, setPrefs] = useState<UserPrefs>(DEFAULT_PREFS);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>('30');
+  const [charges, setCharges] = useState<ChargeRecord[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       let alive = true;
       (async () => {
-        const [data, p] = await Promise.all([loadTrips(), loadPrefs()]);
+        const [data, p, ch] = await Promise.all([loadTrips(), loadPrefs(), loadCharges()]);
         if (!alive) return;
         setTrips(data);
+        setCharges(ch);
         setPrefs(p);
         setLoading(false);
       })();
@@ -93,13 +96,26 @@ export default function AnalyticsScreen() {
     const longest = ms.reduce((a, b) => (b.km > a.km ? b : a));
     const eligible = ms.filter((m) => m.km >= 5);
     const best = (eligible.length ? eligible : ms).reduce((a, b) => (b.cons < a.cons ? b : a));
-    const priced = ms.filter((m) => m.trip.pricePerKwh != null || prefs.electricityPrice != null);
+    const fallback = averagePrice(charges) ?? prefs.electricityPrice;
+    const priced = ms.filter((m) => m.trip.pricePerKwh != null || fallback != null);
     const cost =
-      priced.length > 0
-        ? priced.reduce((s, m) => s + m.kwh * (m.trip.pricePerKwh ?? prefs.electricityPrice ?? 0), 0)
-        : null;
+      priced.length > 0 ? priced.reduce((s, m) => s + m.kwh * (m.trip.pricePerKwh ?? fallback ?? 0), 0) : null;
     return { km, kwh, secs, cons, longest, best, cost };
-  }, [ms, prefs]);
+  }, [ms, prefs, charges]);
+
+  const chargeStats = useMemo(() => {
+    const since = period === 'all' ? 0 : Date.now() - Number(period) * 86400000;
+    const cs = charges.filter((c) => new Date(c.date).getTime() >= since);
+    if (cs.length === 0) return null;
+    const cost = cs.reduce((s, c) => s + c.cost, 0);
+    const kwh = cs.reduce((s, c) => s + c.kwh, 0);
+    const byType = CHARGE_TYPES.map((t) => {
+      const x = cs.filter((c) => c.type === t.key);
+      const k = x.reduce((s, c) => s + c.kwh, 0);
+      return { label: t.label, kwh: k, cost: x.reduce((s, c) => s + c.cost, 0), share: kwh > 0 ? k / kwh : 0 };
+    });
+    return { count: cs.length, cost, kwh, avg: kwh > 0 ? cost / kwh : 0, byType };
+  }, [charges, period]);
 
   const bars = useMemo(() => buildBars(ms, period), [ms, period]);
   const trend = useMemo(() => [...ms].sort((a, b) => a.t - b.t), [ms]);
@@ -222,6 +238,54 @@ export default function AnalyticsScreen() {
                   }
                 />
               </View>
+
+              {chargeStats && (
+                <>
+                  <Text style={styles.section}>Charging</Text>
+                  <View style={styles.card}>
+                    <View style={{ flexDirection: 'row' }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.bdValue, { color: C.green }]}>{fmtMoney(chargeStats.cost, prefs.currency)}</Text>
+                        <Text style={styles.bdUnit}>spent · {chargeStats.count} charges</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.bdValue}>{chargeStats.kwh.toFixed(0)} kWh</Text>
+                        <Text style={styles.bdUnit}>charged</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.bdValue}>{fmtMoney(chargeStats.avg, prefs.currency)}</Text>
+                        <Text style={styles.bdUnit}>avg per kWh</Text>
+                      </View>
+                    </View>
+                    <View style={styles.splitBar}>
+                      {chargeStats.byType.map((t, i) =>
+                        t.share > 0 ? (
+                          <View
+                            key={t.label}
+                            style={{ flex: t.share, backgroundColor: [C.green, C.blue, C.amber][i] }}
+                          />
+                        ) : null
+                      )}
+                    </View>
+                    {chargeStats.byType
+                      .filter((t) => t.kwh > 0)
+                      .map((t, i) => (
+                        <View key={t.label} style={styles.splitRow}>
+                          <View
+                            style={[
+                              styles.splitDot,
+                              { backgroundColor: [C.green, C.blue, C.amber][CHARGE_TYPES.findIndex((x) => x.label === t.label)] },
+                            ]}
+                          />
+                          <Text style={styles.splitLabel}>{t.label}</Text>
+                          <Text style={styles.splitValue}>
+                            {Math.round(t.share * 100)}% · {fmtMoney(t.kwh > 0 ? t.cost / t.kwh : 0, prefs.currency)}/kWh
+                          </Text>
+                        </View>
+                      ))}
+                  </View>
+                </>
+              )}
 
               <Text style={styles.section}>Your real consumption</Text>
               <ProfileTable trips={trips} />
@@ -550,6 +614,11 @@ const styles = StyleSheet.create({
   bdValue: { fontSize: 22, fontFamily: F.bold, color: C.text, marginTop: 4 },
   bdUnit: { fontSize: 11, fontFamily: F.regular, color: C.textMute, marginTop: 2 },
   bdNote: { fontSize: 12, fontFamily: F.medium, color: C.textDim, marginTop: 10 },
+  splitBar: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginTop: 14, backgroundColor: C.border },
+  splitRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  splitDot: { width: 8, height: 8, borderRadius: 4 },
+  splitLabel: { flex: 1, fontSize: 13, fontFamily: F.medium, color: C.text },
+  splitValue: { fontSize: 12.5, fontFamily: F.medium, color: C.textDim },
   ptRow: { flexDirection: 'row', alignItems: 'center' },
   ptBody: { borderTopWidth: 1, borderTopColor: C.border, paddingVertical: 10 },
   ptHeadCell: { flex: 1, paddingVertical: 4 },

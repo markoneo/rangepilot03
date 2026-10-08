@@ -28,6 +28,11 @@ async function ensureUser(): Promise<void> {
   }
 }
 
+/** User-namespaced storage key (for modules that keep their own data). */
+export function userKey(key: string): string {
+  return k(key);
+}
+
 function k(key: string): string {
   return activeUserId ? `u:${activeUserId}:${key}` : key;
 }
@@ -74,6 +79,8 @@ export interface TripRecord {
   rangeAtEndKm?: number | null;
   /** Electricity price snapshot at the time of the trip (per kWh). */
   pricePerKwh?: number | null;
+  /** where the price came from: logged charges or the fixed price in Settings */
+  priceSource?: 'charges' | 'settings' | null;
   currency?: string | null;
 }
 
@@ -103,6 +110,10 @@ const KEYS = {
   ACTIVE_SESSION: 'ev_active_session',
   PREFS: 'ev_prefs',
 } as const;
+
+export async function ensureUserLoaded(): Promise<void> {
+  await ensureUser();
+}
 
 export async function loadPrefs(): Promise<UserPrefs> {
   await ensureUser();
@@ -392,6 +403,7 @@ function tripToRow(t: TripRecord, withStats: boolean) {
       reservePercent: t.reservePercent ?? null,
       rangeAtEndKm: t.rangeAtEndKm ?? null,
       pricePerKwh: t.pricePerKwh ?? null,
+      priceSource: t.priceSource ?? null,
       currency: t.currency ?? null,
     };
   }
@@ -429,6 +441,7 @@ function rowToTrip(r: any): TripRecord {
     reservePercent: num(st.reservePercent),
     rangeAtEndKm: num(st.rangeAtEndKm),
     pricePerKwh: num(st.pricePerKwh),
+    priceSource: st.priceSource ?? null,
     currency: st.currency ?? null,
   };
 }

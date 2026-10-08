@@ -27,7 +27,8 @@ import { ArrivalCard, DestinationSheet } from '@/components/destination';
 import { computeRoute, routeElevation, estimateArrival, type Place, type RouteInfo, type Elevation } from '@/utils/maps';
 import { getCurrentPosition } from '@/utils/geolocation';
 import { writeJSON } from '@/utils/kv';
-import { Search, Snowflake } from 'lucide-react-native';
+import { Search, Snowflake, Zap as ZapIcon } from 'lucide-react-native';
+import { loadCharges, averagePrice } from '@/utils/charges';
 import { getOutsideTempC, COLD_LIMIT_C } from '@/utils/weather';
 import { buildProfile, suggest, seasonOf, type Style } from '@/utils/learnedProfile';
 
@@ -88,6 +89,12 @@ export default function HomeScreen() {
   } | null>(null);
 
   const [tempC, setTempC] = useState<number | null>(null);
+  const [avgPrice, setAvgPrice] = useState<number | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      loadCharges().then((c) => setAvgPrice(averagePrice(c))).catch(() => {});
+    }, [])
+  );
   useEffect(() => {
     getCurrentPosition()
       .then((p) => (p ? getOutsideTempC(p.lat, p.lon) : null))
@@ -182,8 +189,13 @@ export default function HomeScreen() {
     const km = w.reduce((s, t) => s + t.distanceKm, 0);
     const kwh = w.reduce((s, t) => s + tripEnergyKwh(t), 0);
     const consKm = w.reduce((s, t) => s + tripConsumption(t) * t.distanceKm, 0);
-    return { count: w.length, km, kwh, cons: km > 0 ? consKm / km : 0 };
-  }, [trips]);
+    let cost: number | null = null;
+    for (const t of w) {
+      const p = t.pricePerKwh ?? avgPrice ?? prefs.electricityPrice;
+      if (p != null) cost = (cost ?? 0) + tripEnergyKwh(t) * p;
+    }
+    return { count: w.length, km, kwh, cons: km > 0 ? consKm / km : 0, cost };
+  }, [trips, avgPrice, prefs]);
 
   if (!loaded || !car) return <View style={styles.root} />;
 
@@ -421,9 +433,7 @@ export default function HomeScreen() {
               <WeekStat value={week.km.toFixed(0)} unit="km" />
               <WeekStat value={String(week.count)} unit={week.count === 1 ? 'trip' : 'trips'} />
               <WeekStat value={week.cons.toFixed(1)} unit="kWh/100" />
-              {prefs.electricityPrice != null && (
-                <WeekStat value={fmtMoney(week.kwh * prefs.electricityPrice, prefs.currency)} unit="cost" />
-              )}
+              {week.cost != null && <WeekStat value={fmtMoney(week.cost, prefs.currency)} unit="cost" />}
             </View>
           </TouchableOpacity>
         )}
@@ -432,6 +442,10 @@ export default function HomeScreen() {
           <TouchableOpacity style={styles.link} onPress={() => router.push('/trip-history')} activeOpacity={0.8}>
             <Clock size={16} color={C.blue} strokeWidth={2.2} />
             <Text style={styles.linkText}>Trips</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.link} onPress={() => router.push('/charges' as any)} activeOpacity={0.8}>
+            <ZapIcon size={16} color={C.green} strokeWidth={2.2} />
+            <Text style={styles.linkText}>Charging</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.link} onPress={() => router.push('/analytics')} activeOpacity={0.8}>
             <LineChart size={16} color={C.blue} strokeWidth={2.2} />

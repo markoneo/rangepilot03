@@ -16,6 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { ChevronDown, Pause, Play, Flag, Zap, MapPinOff, X, Sparkles, Search, Snowflake } from 'lucide-react-native';
 import { COLD_LIMIT_C } from '@/utils/weather';
+import { ChargeSheet } from '@/components/ChargeSheet';
+import { loadCharges } from '@/utils/charges';
 import { buildProfile, suggest, styleOf, seasonOf, STYLES, type Profile } from '@/utils/learnedProfile';
 import { ArrivalCard, DestinationSheet } from '@/components/destination';
 import { computeRoute, routeElevation, estimateArrival, type Place } from '@/utils/maps';
@@ -71,6 +73,12 @@ export default function DriveScreen() {
   const [coldDismissed, setColdDismissed] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [usualDismissed, setUsualDismissed] = useState(false);
+  const [chargePrompt, setChargePrompt] = useState<{ from: number; to: number } | null>(null);
+  const [chargeSheet, setChargeSheet] = useState(false);
+  const [currency, setCurrency] = useState('€');
+  useEffect(() => {
+    loadPrefs().then((p) => setCurrency(p.currency)).catch(() => {});
+  }, []);
   useEffect(() => {
     loadTrips()
       .then((t) => setProfile(buildProfile(t)))
@@ -165,6 +173,18 @@ export default function DriveScreen() {
           consumption: app?.consumption ?? 18.5,
           reservePercent: prefs.defaultReserve,
         });
+        // Started with more battery than the last trip ended → probably charged.
+        try {
+          const startPct = app?.batteryPercentage ?? 80;
+          const [last] = await loadTrips();
+          if (last && startPct > last.endBattery + 3) {
+            const charges = await loadCharges();
+            const logged = charges.some((c) => new Date(c.date).getTime() > new Date(last.endedAt).getTime());
+            if (!logged) setChargePrompt({ from: Math.round(last.endBattery), to: Math.round(startPct) });
+          }
+        } catch {
+          // ignore
+        }
         const pending = await readJSON<Place>('ev_pending_destination');
         if (pending) {
           await kv.removeItem('ev_pending_destination');
@@ -257,6 +277,7 @@ export default function DriveScreen() {
   const onBattery = async (v: number) => {
     setBatterySheet(false);
     setPendingBattery(null);
+    if (v > snap.battery + 3) setChargePrompt({ from: Math.round(snap.battery), to: Math.round(v) });
     const r = await Trip.setBattery(v);
     if (r.learned != null) {
       showToast(`Consumption updated to ${r.learned.toFixed(1)} kWh/100 km from your battery`, 'blue');
@@ -355,6 +376,25 @@ export default function DriveScreen() {
             <TouchableOpacity onPress={() => setBgWarning(null)} hitSlop={10}>
               <X size={16} color={C.textMute} />
             </TouchableOpacity>
+          </View>
+        )}
+
+        {chargePrompt && (
+          <View style={styles.chargeCard}>
+            <Zap size={18} color={C.green} fill={C.green} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.usualTitle}>
+                Looks like you charged {chargePrompt.from}% → {chargePrompt.to}%. Add the cost?
+              </Text>
+              <View style={styles.usualActions}>
+                <TouchableOpacity style={styles.chargeAdd} onPress={() => setChargeSheet(true)} activeOpacity={0.85}>
+                  <Text style={styles.chargeAddText}>Add charge</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setChargePrompt(null)} hitSlop={8}>
+                  <Text style={styles.usualSkip}>No</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         )}
 
@@ -617,6 +657,19 @@ export default function DriveScreen() {
         </TouchableOpacity>
       </View>
 
+      <ChargeSheet
+        visible={chargeSheet}
+        capacityKwh={trip.batteryCapacity}
+        currency={currency}
+        initialFrom={chargePrompt?.from}
+        initialTo={chargePrompt?.to}
+        onClose={() => setChargeSheet(false)}
+        onSaved={() => {
+          setChargeSheet(false);
+          setChargePrompt(null);
+          showToast('Charge saved — trip costs now use your real price', 'green');
+        }}
+      />
       <DestinationSheet
         visible={destSheet}
         near={trip.lastFix ? { lat: trip.lastFix.lat, lon: trip.lastFix.lon } : null}
@@ -826,6 +879,19 @@ const styles = StyleSheet.create({
   },
   consValue: { fontSize: 26, fontFamily: F.bold, letterSpacing: -0.8 },
   consUnit: { fontSize: 11, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
+  chargeCard: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+    backgroundColor: C.greenDim,
+    borderColor: C.green + '55',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+  },
+  chargeAdd: { backgroundColor: C.green, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14 },
+  chargeAddText: { color: '#06240F', fontFamily: F.bold, fontSize: 13.5 },
   usual: {
     flexDirection: 'row',
     gap: 10,

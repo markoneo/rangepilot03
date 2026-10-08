@@ -141,7 +141,7 @@ export default function TripSummaryScreen() {
             />
             <Tile value={energy.toFixed(1)} unit="kWh" label="Energy used" />
             {cost != null ? (
-              <Tile value={fmtMoney(cost, currency)} label="Cost" color={C.green} />
+              <Tile value={fmtMoney(cost, currency)} label={trip.priceSource === "charges" ? "Cost · your price" : "Cost"} color={C.green} />
             ) : (
               <Tile value={trip.distanceKm > 0 ? ((energy / trip.distanceKm) * 1000).toFixed(0) : '–'} unit="Wh/km" label="Efficiency" />
             )}

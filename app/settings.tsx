@@ -132,7 +132,7 @@ export default function SettingsScreen() {
 
         <Card>
           <Label>Charging cost (optional)</Label>
-          <Text style={styles.help}>Used to show what each trip cost you.</Text>
+          <Text style={styles.help}>Used for trip costs until you log charges (Charging screen) — then your real average price is used.</Text>
           <View style={styles.inputRow}>
             <TextInput
               style={[styles.input, { flex: 1 }]}

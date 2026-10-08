@@ -43,6 +43,7 @@ import {
 } from './storage';
 import { logTunnelGap, resolveTunnelDistance } from './tunnelBridge';
 import { getOutsideTempC } from './weather';
+import { currentAveragePrice } from './charges';
 
 export type { Snapshot } from './trackCore';
 
@@ -360,6 +361,7 @@ export async function finishTrip(endBatteryInput: number | null): Promise<TripRe
         ? endBatteryInput
         : snap.battery;
     const prefs = await loadPrefs();
+    const chargePrice = await currentAveragePrice();
     const real = finalConsumption(s, endBattery);
     const r1 = (n: number | null) => (n != null ? Math.round(n * 10) / 10 : null);
 
@@ -391,7 +393,8 @@ export async function finishTrip(endBatteryInput: number | null): Promise<TripRe
       rangeAtEndKm: Math.round(
         rangeFor(s.batteryCapacity, endBattery, real ?? s.consumption, 0)
       ),
-      pricePerKwh: prefs.electricityPrice,
+      pricePerKwh: chargePrice ?? prefs.electricityPrice,
+      priceSource: chargePrice != null ? 'charges' : prefs.electricityPrice != null ? 'settings' : null,
       currency: prefs.currency,
     };
 
