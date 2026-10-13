@@ -5,6 +5,7 @@
  * and accepted; otherwise free fallbacks: Photon (OpenStreetMap search) and
  * OSRM (routing). Elevation comes from Open-Meteo (free, no key).
  */
+import { demElevations, elevationStats } from './elevation';
 import { readJSON, writeJSON } from './kv';
 
 const GKEY = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY as string | undefined) || '';
@@ -243,27 +244,34 @@ export async function computeRoute(
 
 export async function routeElevation(points: [number, number][]): Promise<Elevation | null> {
   if (points.length < 2) return null;
-  const n = Math.min(100, points.length);
-  const sample: [number, number][] = [];
-  for (let i = 0; i < n; i++) sample.push(points[Math.round((i * (points.length - 1)) / (n - 1))]);
-  try {
-    const lat = sample.map((p) => p[0].toFixed(5)).join(',');
-    const lon = sample.map((p) => p[1].toFixed(5)).join(',');
-    const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`);
-    const j = await res.json();
-    const el: number[] = j.elevation;
-    if (!Array.isArray(el) || el.length < 2) return null;
-    let climb = 0;
-    let descent = 0;
-    for (let i = 1; i < el.length; i++) {
-      const d = el[i] - el[i - 1];
-      if (d > 0) climb += d;
-      else descent -= d;
-    }
-    return { climbM: Math.round(climb), descentM: Math.round(descent), netM: Math.round(el[el.length - 1] - el[0]) };
-  } catch {
-    return null;
+  // Sample evenly by distance (polyline points are dense in towns, sparse on
+  // motorways), up to 300 points ≈ every few hundred metres.
+  const cum: number[] = [0];
+  for (let i = 1; i < points.length; i++) {
+    cum.push(cum[i - 1] + haversine(points[i - 1], points[i]));
   }
+  const total = cum[cum.length - 1];
+  const n = Math.max(2, Math.min(300, Math.round(total / 0.3)));
+  const sample: [number, number][] = [];
+  let j = 0;
+  for (let k = 0; k < n; k++) {
+    const target = (k * total) / (n - 1);
+    while (j < cum.length - 1 && cum[j + 1] < target) j++;
+    sample.push(points[Math.min(j + 1, points.length - 1)]);
+  }
+  sample[0] = points[0];
+  const el = await demElevations(sample);
+  const st = el ? elevationStats(el) : null;
+  return st ? { climbM: st.gainM, descentM: st.lossM, netM: st.netM } : null;
+}
+
+function haversine(a: [number, number], b: [number, number]) {
+  const R = 6371;
+  const r = (d: number) => (d * Math.PI) / 180;
+  const dLat = r(b[0] - a[0]);
+  const dLon = r(b[1] - a[1]);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(r(a[0])) * Math.cos(r(b[0])) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
 // ── Energy estimate ───────────────────────────────────────────────────────

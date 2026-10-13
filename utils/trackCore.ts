@@ -106,6 +106,10 @@ export interface TripState {
   maxSpeedKmh: number | null;
   speedSamples: { t: number; s: number }[];
   lastSampleTs: number;
+  /** sparse breadcrumb [lat, lon] for terrain elevation at the end */
+  track?: [number, number][];
+  trackLastKm?: number;
+  trackSpacingKm?: number;
   /** "Can I make it?" destination for this drive (optional) */
   destination?: TripDestination | null;
 }
@@ -231,8 +235,8 @@ export const CFG = {
   GAP_MAX_AVG_KMH: 180,
   STATIONARY_KMH: 2.5,
   MOVING_KMH: 3,
-  ELEV_STEP_M: 4,
-  ELEV_MAX_VACC_M: 20,
+  ELEV_STEP_M: 8,
+  ELEV_MAX_VACC_M: 15,
   SAMPLE_EVERY_MS: 5000,
   MAX_SAMPLES: 1200,
   /** provisional (display-only) estimate during an outage */
@@ -318,6 +322,21 @@ function addDistance(s: TripState, km: number) {
   s.distanceKm = round3(s.distanceKm + km);
 }
 
+const TRACK_MAX_POINTS = 1200;
+
+function addTrackPoint(s: TripState, f: Fix, force = false) {
+  const spacing = s.trackSpacingKm ?? 0.15;
+  if (!s.track) s.track = [];
+  if (!force && s.track.length && s.distanceKm - (s.trackLastKm ?? 0) < spacing) return;
+  s.track.push([Math.round(f.lat * 1e5) / 1e5, Math.round(f.lon * 1e5) / 1e5]);
+  s.trackLastKm = s.distanceKm;
+  if (s.track.length > TRACK_MAX_POINTS) {
+    // Long drive: keep every other point and double the spacing.
+    s.track = s.track.filter((_, i) => i % 2 === 0 || i === s.track!.length - 1);
+    s.trackSpacingKm = spacing * 2;
+  }
+}
+
 function round3(n: number) {
   return Math.round(n * 1000) / 1000;
 }
@@ -384,6 +403,7 @@ export function applyFix(s: TripState, f: Fix): FixResult {
     s.lastFix = f;
     s.lastSignalAt = f.ts;
     s.lastSpeedKmh = reported ?? 0;
+    if (!s.track?.length) addTrackPoint(s, f, true);
     return { kind: 'anchor' };
   }
 
@@ -415,6 +435,7 @@ export function applyFix(s: TripState, f: Fix): FixResult {
       refined: false,
     };
     s.lastGap = gap;
+    addTrackPoint(s, f, true);
     s.lastFix = f;
     s.lastSignalAt = f.ts;
     s.lastSpeedKmh = reported ?? 0;
@@ -471,6 +492,7 @@ export function applyFix(s: TripState, f: Fix): FixResult {
     if (s.maxSpeedKmh == null || reported > s.maxSpeedKmh) s.maxSpeedKmh = reported;
     if (s.minSpeedKmh == null || reported < s.minSpeedKmh) s.minSpeedKmh = reported;
   }
+  addTrackPoint(s, f);
   s.lastFix = f;
   return { kind: 'moved', km: d };
 }

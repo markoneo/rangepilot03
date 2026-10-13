@@ -6,6 +6,7 @@
  * location task headless after the app was swiped away. State is persisted to
  * AsyncStorage/localStorage so a killed app resumes exactly where it was.
  */
+import { trackElevationStats } from './elevation';
 import { AppState as RNAppState, Platform } from 'react-native';
 import {
   applyFix,
@@ -364,6 +365,8 @@ export async function finishTrip(endBatteryInput: number | null): Promise<TripRe
     const prefs = await loadPrefs();
     const chargePrice = await currentAveragePrice();
     const real = finalConsumption(s, endBattery);
+    // Terrain elevation along the driven route (GPS altitude is only a fallback).
+    const dem = s.track && s.track.length >= 2 ? await trackElevationStats(s.track) : null;
     const r1 = (n: number | null) => (n != null ? Math.round(n * 10) / 10 : null);
 
     const trip: TripRecord = {
@@ -378,16 +381,16 @@ export async function finishTrip(endBatteryInput: number | null): Promise<TripRe
       realConsumption: real,
       carName: s.carName,
       batteryCapacity: s.batteryCapacity,
-      minElevationM: r1(s.minElevationM),
-      maxElevationM: r1(s.maxElevationM),
+      minElevationM: dem ? dem.minM : r1(s.minElevationM),
+      maxElevationM: dem ? dem.maxM : r1(s.maxElevationM),
       minTemperatureC: r1(s.minTemperatureC),
       maxTemperatureC: r1(s.maxTemperatureC),
       minSpeedKmh: r1(s.minSpeedKmh),
       maxSpeedKmh: r1(s.maxSpeedKmh),
       speedSamples: s.speedSamples.length > 1 ? s.speedSamples : null,
       movingSeconds: Math.round(s.movingMs / 1000),
-      elevationGainM: Math.round(s.elevationGainM),
-      elevationLossM: Math.round(s.elevationLossM),
+      elevationGainM: dem ? dem.gainM : Math.round(s.elevationGainM),
+      elevationLossM: dem ? dem.lossM : Math.round(s.elevationLossM),
       estimatedKm: Math.round(s.estimatedKm * 100) / 100,
       gpsGaps: s.gpsGaps,
       reservePercent: s.reservePercent,
