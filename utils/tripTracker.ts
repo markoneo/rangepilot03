@@ -271,6 +271,7 @@ export async function startTrip(p: {
   startBattery: number;
   consumption: number;
   reservePercent: number;
+  style?: 'city' | 'mixed' | 'highway' | 'custom';
 }): Promise<TripState> {
   return run(async () => {
     const now = Date.now();

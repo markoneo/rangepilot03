@@ -21,7 +21,7 @@ import { loadCharges } from '@/utils/charges';
 import { buildProfile, suggest, styleOf, seasonOf, STYLES, type Profile } from '@/utils/learnedProfile';
 import { ArrivalCard, DestinationSheet } from '@/components/destination';
 import { computeRoute, routeElevation, estimateArrival, type Place } from '@/utils/maps';
-import { destinationRemainingKm } from '@/utils/trackCore';
+import { destinationRemainingKm, CHARGE_JUMP_PCT } from '@/utils/trackCore';
 import { getCurrentPosition } from '@/utils/geolocation';
 import { readJSON, kv } from '@/utils/kv';
 import {
@@ -172,12 +172,14 @@ export default function DriveScreen() {
           startBattery: app?.batteryPercentage ?? 80,
           consumption: app?.consumption ?? 18.5,
           reservePercent: prefs.defaultReserve,
+          style:
+            app?.preset === 'city' || app?.preset === 'mixed' || app?.preset === 'highway' ? app.preset : 'custom',
         });
         // Started with more battery than the last trip ended → probably charged.
         try {
           const startPct = app?.batteryPercentage ?? 80;
           const [last] = await loadTrips();
-          if (last && startPct > last.endBattery + 3) {
+          if (last && startPct >= last.endBattery + CHARGE_JUMP_PCT) {
             const charges = await loadCharges();
             const logged = charges.some((c) => new Date(c.date).getTime() > new Date(last.endedAt).getTime());
             if (!logged) setChargePrompt({ from: Math.round(last.endBattery), to: Math.round(startPct) });
@@ -277,7 +279,7 @@ export default function DriveScreen() {
   const onBattery = async (v: number) => {
     setBatterySheet(false);
     setPendingBattery(null);
-    if (v > snap.battery + 3) setChargePrompt({ from: Math.round(snap.battery), to: Math.round(v) });
+    if (v >= snap.battery + CHARGE_JUMP_PCT) setChargePrompt({ from: Math.round(snap.battery), to: Math.round(v) });
     const r = await Trip.setBattery(v);
     if (r.learned != null) {
       showToast(`Consumption updated to ${r.learned.toFixed(1)} kWh/100 km from your battery`, 'blue');
@@ -421,6 +423,7 @@ export default function DriveScreen() {
             >
               <Text style={[styles.consValue, { color: bColor }]}>{snap.consumption.toFixed(1)}</Text>
               <Text style={styles.consUnit}>kWh/100</Text>
+              <Text style={styles.consSpeed}>at ~{snap.speedBasisKmh} km/h</Text>
               <View style={styles.consLearned}>
                 {snap.learnConfidence !== 'none' && <Sparkles size={10} color={bColor} />}
                 <Text style={[styles.consLearnedText, { color: snap.learnConfidence === 'none' ? C.textMute : bColor }]}>
@@ -879,6 +882,7 @@ const styles = StyleSheet.create({
   },
   consValue: { fontSize: 26, fontFamily: F.bold, letterSpacing: -0.8 },
   consUnit: { fontSize: 11, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
+  consSpeed: { fontSize: 10, fontFamily: F.medium, color: C.textMute, marginTop: 2 },
   chargeCard: {
     flexDirection: 'row',
     gap: 10,

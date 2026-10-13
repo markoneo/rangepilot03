@@ -77,6 +77,8 @@ export interface TripState {
   measuredUsedPct?: number | null;
   /** latest outside temperature (°C) */
   outsideTempC?: number | null;
+  /** speed-aware consumption model (absent on drives started by older versions) */
+  speed?: SpeedModel;
 
   distanceKm: number;
   estimatedKm: number;
@@ -106,6 +108,95 @@ export interface TripState {
   lastSampleTs: number;
   /** "Can I make it?" destination for this drive (optional) */
   destination?: TripDestination | null;
+}
+
+/**
+ * Speed-aware consumption.
+ * consumption(v) = offset + SPEED_CURVE(v). The curve carries the speed effect
+ * (air drag grows fast above ~80 km/h), the offset carries everything personal
+ * (car, weather, heating, load). The offset starts from the consumption the
+ * user picked (at a typical speed for that preset) and is learned from battery
+ * corrections, so the app keeps learning while reacting to speed in real time.
+ */
+export interface SpeedModel {
+  offset: number;
+  /** smoothed recent driving speed (km/h), the speed the display/range use */
+  ema: number;
+  /** Σ km × curve(v) / 100 since the battery anchor (kWh at offset 0) */
+  curveKwhSinceAnchor: number;
+  /** same, since the learning start point */
+  curveKwhSinceMeasure: number;
+}
+
+/** kWh/100 km by speed (from Marko's own driving): flat in town, ~28 at 160+. */
+export const SPEED_CURVE: [number, number][] = [
+  [0, 11],
+  [60, 11],
+  [80, 13],
+  [100, 16],
+  [120, 20],
+  [130, 22],
+  [140, 24],
+  [160, 28],
+];
+
+export function curveAt(kmh: number): number {
+  const v = Math.max(0, isFinite(kmh) ? kmh : 0);
+  const pts = SPEED_CURVE;
+  if (v >= pts[pts.length - 1][0]) return pts[pts.length - 1][1];
+  for (let i = 1; i < pts.length; i++) {
+    const [x1, y1] = pts[i];
+    if (v <= x1) {
+      const [x0, y0] = pts[i - 1];
+      return y0 + ((y1 - y0) * (v - x0)) / (x1 - x0);
+    }
+  }
+  return pts[0][1];
+}
+
+/** Typical average speed each preset stands for. */
+export const STYLE_REF_KMH = { city: 45, mixed: 75, highway: 115, custom: 80 } as const;
+const EMA_TAU_S = 240; // ~4 min smoothing so traffic lights don't make the range jump
+const MIN_CONS = 6;
+const MAX_CONS = 50;
+
+function clampCons(c: number) {
+  return Math.max(MIN_CONS, Math.min(MAX_CONS, c));
+}
+
+/** Upgrade a drive saved by an older version without changing its battery. */
+export function ensureSpeedModel(s: TripState): SpeedModel {
+  if (s.speed) return s.speed;
+  const ref = STYLE_REF_KMH.custom;
+  const c = curveAt(ref);
+  s.speed = {
+    offset: s.consumption - c,
+    ema: ref,
+    curveKwhSinceAnchor: (Math.max(0, s.distanceKm - s.batteryAnchorDistance) * c) / 100,
+    curveKwhSinceMeasure: (Math.max(0, s.distanceKm - s.measureDistance) * c) / 100,
+  };
+  return s.speed;
+}
+
+function liveConsumption(s: TripState, kmh?: number): number {
+  const m = ensureSpeedModel(s);
+  return clampCons(m.offset + curveAt(kmh ?? m.ema));
+}
+
+function trackEnergy(s: TripState, km: number, kmh: number) {
+  if (!isFinite(km) || km === 0) return;
+  const m = ensureSpeedModel(s);
+  const e = (km * curveAt(kmh)) / 100;
+  m.curveKwhSinceAnchor = Math.max(0, m.curveKwhSinceAnchor + e);
+  m.curveKwhSinceMeasure = Math.max(0, m.curveKwhSinceMeasure + e);
+}
+
+function updateEma(s: TripState, kmh: number, dtS: number) {
+  if (!(dtS > 0) || !isFinite(kmh)) return;
+  const m = ensureSpeedModel(s);
+  const a = 1 - Math.exp(-dtS / EMA_TAU_S);
+  m.ema = m.ema + (Math.min(200, kmh) - m.ema) * a;
+  s.consumption = Math.round(liveConsumption(s) * 10) / 10;
 }
 
 export interface TripDestination {
@@ -171,7 +262,9 @@ export function newTripState(p: {
   startBattery: number;
   consumption: number;
   reservePercent: number;
+  style?: keyof typeof STYLE_REF_KMH;
 }): TripState {
+  const ref = STYLE_REF_KMH[p.style ?? 'custom'] ?? STYLE_REF_KMH.custom;
   return {
     version: 2,
     id: p.id,
@@ -190,6 +283,7 @@ export function newTripState(p: {
     measureBattery: p.startBattery,
     measureDistance: 0,
     measuredConsumption: null,
+    speed: { offset: p.consumption - curveAt(ref), ema: ref, curveKwhSinceAnchor: 0, curveKwhSinceMeasure: 0 },
     distanceKm: 0,
     estimatedKm: 0,
     movingMs: 0,
@@ -303,6 +397,9 @@ export function applyFix(s: TripState, f: Fix): FixResult {
     const maxKm = (dt / 3600) * CFG.GAP_MAX_AVG_KMH;
     const committed = Math.min(d, maxKm);
     addDistance(s, committed);
+    const gapKmh = dt > 0 ? (committed / dt) * 3600 : 0;
+    trackEnergy(s, committed, gapKmh);
+    if (gapKmh >= CFG.MOVING_KMH) updateEma(s, gapKmh, dt);
     s.estimatedKm = round3(s.estimatedKm + committed);
     s.gpsGaps += 1;
     const gap: GapRecord = {
@@ -365,7 +462,11 @@ export function applyFix(s: TripState, f: Fix): FixResult {
   }
 
   addDistance(s, d);
-  if (kmh >= CFG.MOVING_KMH) s.movingMs += dt * 1000;
+  trackEnergy(s, d, kmh);
+  if (kmh >= CFG.MOVING_KMH) {
+    s.movingMs += dt * 1000;
+    updateEma(s, kmh, dt);
+  }
   if (reported != null && reported >= CFG.MOVING_KMH && reported <= CFG.MAX_PLAUSIBLE_KMH) {
     if (s.maxSpeedKmh == null || reported > s.maxSpeedKmh) s.maxSpeedKmh = reported;
     if (s.minSpeedKmh == null || reported < s.minSpeedKmh) s.minSpeedKmh = reported;
@@ -389,6 +490,8 @@ export function refineGap(s: TripState, gap: GapRecord, roadKm: number): number 
   const delta = round3(target - gap.committedKm);
   s.lastGap = { ...s.lastGap, refined: true, committedKm: round3(target) };
   if (delta !== 0) {
+    const dtS = (gap.endedTs - gap.startedTs) / 1000;
+    trackEnergy(s, delta, dtS > 0 ? (target / dtS) * 3600 : 0);
     s.distanceKm = round3(Math.max(0, s.distanceKm + delta));
     s.estimatedKm = round3(Math.max(0, s.estimatedKm + delta));
   }
@@ -421,6 +524,8 @@ export interface Snapshot {
   rangeKm: number;
   energyUsedKwh: number;
   consumption: number;
+  /** smoothed speed the consumption/range are calculated for */
+  speedBasisKmh: number;
   measuredConsumption: number | null;
   learnConfidence: 'none' | 'low' | 'medium' | 'high';
   outsideTempC: number | null;
@@ -433,8 +538,14 @@ export interface Snapshot {
 }
 
 export function batteryAt(s: TripState, distanceKm: number): number {
-  const since = Math.max(0, distanceKm - s.batteryAnchorDistance);
-  const kwh = (since * s.consumption) / 100;
+  const m = ensureSpeedModel(s);
+  const since = Math.max(0, s.distanceKm - s.batteryAnchorDistance);
+  // provisional km (tunnel estimate) beyond the committed distance
+  const extra = Math.max(0, distanceKm - s.distanceKm);
+  let kwh = (since * m.offset) / 100 + m.curveKwhSinceAnchor;
+  kwh += (extra * liveConsumption(s, s.lastSpeedKmh)) / 100;
+  // never let a low/negative offset make energy go below a sane floor
+  kwh = Math.max(kwh, (since * MIN_CONS) / 100);
   const drop = s.batteryCapacity > 0 ? (kwh / s.batteryCapacity) * 100 : 0;
   return Math.max(0, Math.min(100, s.batteryAnchor - drop));
 }
@@ -468,6 +579,7 @@ export function snapshot(s: TripState, now: number): Snapshot {
   }
   const distanceKm = s.distanceKm + provisionalKm;
   const battery = batteryAt(s, distanceKm);
+  const consumption = Math.round(liveConsumption(s) * 10) / 10;
   const usableBattery = Math.max(0, battery - s.reservePercent);
   const elapsedSec = Math.floor(activeMs(s, now) / 1000);
   const movingSec = Math.floor(s.movingMs / 1000);
@@ -481,9 +593,10 @@ export function snapshot(s: TripState, now: number): Snapshot {
     speedKmh: gps === 'active' || gps === 'weak' ? Math.max(0, s.lastSpeedKmh) : 0,
     battery,
     usableBattery,
-    rangeKm: rangeFor(s.batteryCapacity, battery, s.consumption, s.reservePercent),
+    rangeKm: rangeFor(s.batteryCapacity, battery, consumption, s.reservePercent),
     energyUsedKwh: Math.max(0, (s.batteryCapacity * (s.startBattery - battery)) / 100),
-    consumption: s.consumption,
+    consumption,
+    speedBasisKmh: Math.round(ensureSpeedModel(s).ema),
     measuredConsumption: s.measuredConsumption,
     learnConfidence:
       s.measuredConsumption == null || s.measuredUsedPct == null
@@ -507,16 +620,23 @@ export function snapshot(s: TripState, now: number): Snapshot {
  * User corrected the battery % (read from the car). Rebase the model and,
  * after enough distance, learn the real consumption so the range self-corrects.
  */
+export const CHARGE_JUMP_PCT = 10;
+
 export function correctBattery(s: TripState, value: number, now: number): { learned: number | null } {
+  const m = ensureSpeedModel(s);
   const v = Math.max(0, Math.min(100, Math.round(value * 10) / 10));
   const predicted = batteryAt(s, s.distanceKm);
   // Big jump up → the car was charged. Restart consumption measurement.
-  if (v > predicted + 3) {
+  // Smaller upward corrections are just the estimate being too pessimistic —
+  // those are exactly what the learning below needs.
+  if (v >= predicted + CHARGE_JUMP_PCT) {
     s.measureBattery = v;
     s.measureDistance = s.distanceKm;
+    m.curveKwhSinceMeasure = 0;
   }
   s.batteryAnchor = v;
   s.batteryAnchorDistance = s.distanceKm;
+  m.curveKwhSinceAnchor = 0;
   s.updatedAt = now;
 
   let learned: number | null = null;
@@ -528,9 +648,12 @@ export function correctBattery(s: TripState, value: number, now: number): { lear
   if (dist >= 5 && usedPct >= 2 && (usedPct >= 3 || dist >= 15)) {
     const c = (s.batteryCapacity * (usedPct / 100) * 100) / dist;
     if (c >= 5 && c <= 50) {
+      // What the speed curve alone explains for this stretch; the rest is personal.
+      const curveAvg = (m.curveKwhSinceMeasure / dist) * 100;
+      const measuredOffset = c - curveAvg;
       const w = Math.max(0.2, Math.min(0.9, 1 - 1.5 / usedPct));
-      const blended = s.consumption * (1 - w) + c * w;
-      learned = Math.round(blended * 10) / 10;
+      m.offset = m.offset * (1 - w) + measuredOffset * w;
+      learned = Math.round(liveConsumption(s) * 10) / 10;
       s.measuredConsumption = learned;
       s.measuredUsedPct = usedPct;
       s.consumption = learned;
@@ -541,10 +664,15 @@ export function correctBattery(s: TripState, value: number, now: number): { lear
 
 export function setConsumption(s: TripState, c: number, now: number) {
   // Rebase first so a new consumption only affects the km still to come.
+  const m = ensureSpeedModel(s);
   const current = batteryAt(s, s.distanceKm);
   s.batteryAnchor = current;
   s.batteryAnchorDistance = s.distanceKm;
-  s.consumption = Math.max(5, Math.min(50, Math.round(c * 10) / 10));
+  m.curveKwhSinceAnchor = 0;
+  const v = clampCons(Math.round(c * 10) / 10);
+  // The value the user sets applies at the speed they're driving now.
+  m.offset = v - curveAt(m.ema);
+  s.consumption = v;
   s.updatedAt = now;
 }
 
