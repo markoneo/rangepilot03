@@ -257,8 +257,6 @@ export default function DriveScreen() {
   const kwhLeft = (trip.batteryCapacity * snap.usableBattery) / 100;
   // km per 10 % of battery at the current (or learned) consumption
   const kmPer10 = snap.consumption > 0 ? (trip.batteryCapacity * 0.1 * 100) / snap.consumption : 0;
-  const nextMark = Math.max(0, Math.ceil(snap.battery / 10) * 10 - 10);
-  const kmToNextMark = ((snap.battery - nextMark) / 10) * kmPer10;
 
   const gps = (() => {
     switch (snap.gps) {
@@ -355,6 +353,7 @@ export default function DriveScreen() {
               </Text>
             </View>
             {/* Consumption — follows the battery colour, learns from battery corrections */}
+            <View style={{ alignItems: 'stretch' }}>
             <TouchableOpacity
               style={[styles.consBox, { borderColor: bColor + '55', backgroundColor: bColor + '14' }]}
               onPress={() => setConsSheet(true)}
@@ -376,6 +375,15 @@ export default function DriveScreen() {
                 </Text>
               </View>
             </TouchableOpacity>
+            {/* km per 10 % — quick mental range check */}
+            <View style={styles.per10Pill}>
+              <Text style={styles.per10PillValue}>
+                10% = {kmPer10.toFixed(0)}
+                <Text style={styles.per10PillUnit}> km</Text>
+              </Text>
+              <Text style={styles.per10PillSub}>1% = {(kmPer10 / 10).toFixed(1)} km</Text>
+            </View>
+            </View>
           </View>
           <View style={styles.battTrack}>
             <View
@@ -495,36 +503,15 @@ export default function DriveScreen() {
           </TouchableOpacity>
         )}
 
-        {/* km per 10 % — quick mental range check */}
-        <View style={styles.per10}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.per10Label}>10% battery =</Text>
-            <Text style={styles.per10Value}>
-              {kmPer10.toFixed(0)}
-              <Text style={styles.per10Unit}> km</Text>
-            </Text>
-            <Text style={styles.per10Sub}>
-              1% = {(kmPer10 / 10).toFixed(1)} km
-              {snap.measuredConsumption != null ? ' · from your battery' : ''}
-            </Text>
-          </View>
-          {snap.battery > 0.5 && (
-            <View style={styles.per10Right}>
-              <Text style={styles.per10Label}>{nextMark}% in</Text>
-              <Text style={styles.per10Next}>
-                {kmToNextMark.toFixed(1)}
-                <Text style={styles.per10Unit}> km</Text>
-              </Text>
-              <Text style={styles.per10Sub}>check your car then</Text>
-            </View>
-          )}
-        </View>
-
         {/* Live stats */}
         <View style={styles.statsRow}>
           <Stat value={snap.distanceKm.toFixed(1)} label="km driven" />
           <Stat value={formatDuration(snap.elapsedSec)} label="time" />
-          <Stat value={paused ? '–' : String(Math.round(snap.speedKmh))} label="km/h" />
+          <Stat
+            value={paused ? '–' : String(Math.round(snap.speedKmh))}
+            label="km/h"
+            color={paused ? C.text : speedColor(snap.speedKmh)}
+          />
         </View>
         {snap.estimatedKm >= 0.1 && (
           <Text style={styles.estNote}>
@@ -716,10 +703,17 @@ export default function DriveScreen() {
   );
 }
 
-function Stat({ value, unit, label }: { value: string; unit?: string; label: string }) {
+/** Speed colour: green up to 90 km/h, yellow 90–110, red above 110. */
+function speedColor(kmh: number) {
+  if (kmh > 110) return C.red;
+  if (kmh >= 90) return C.amber;
+  return C.green;
+}
+
+function Stat({ value, unit, label, color }: { value: string; unit?: string; label: string; color?: string }) {
   return (
     <View style={styles.stat}>
-      <Text style={styles.statValue} numberOfLines={1}>
+      <Text style={[styles.statValue, color ? { color } : null]} numberOfLines={1}>
         {value}
       </Text>
       {unit ? <Text style={styles.statUnit}>{unit}</Text> : null}
@@ -871,6 +865,19 @@ const styles = StyleSheet.create({
   },
   consValue: { fontSize: 26, fontFamily: F.bold, letterSpacing: -0.8 },
   consUnit: { fontSize: 11, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
+  per10Pill: {
+    marginTop: 8,
+    borderRadius: 12,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    backgroundColor: C.blue + '1F',
+    borderWidth: 1,
+    borderColor: C.blue + '44',
+  },
+  per10PillValue: { fontSize: 15, fontFamily: F.bold, color: C.text },
+  per10PillUnit: { fontSize: 12, fontFamily: F.semibold, color: C.blue },
+  per10PillSub: { fontSize: 10.5, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
   consSpeed: { fontSize: 10, fontFamily: F.medium, color: C.textMute, marginTop: 2 },
   chargeCard: {
     flexDirection: 'row',
