@@ -14,9 +14,11 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { keepScreenOn, allowScreenOff } from '@/utils/screenAwake';
 import { ChevronDown, Pause, Play, Flag, Zap, MapPinOff, X, Sparkles, Search, Snowflake } from 'lucide-react-native';
 import { COLD_LIMIT_C } from '@/utils/weather';
 import { ChargeSheet } from '@/components/ChargeSheet';
+import { Popup } from '@/components/Popup';
 import { loadCharges } from '@/utils/charges';
 import { buildProfile, suggest, styleOf, seasonOf, STYLES, type Profile } from '@/utils/learnedProfile';
 import { ArrivalCard, DestinationSheet } from '@/components/destination';
@@ -196,7 +198,10 @@ export default function DriveScreen() {
       setReady(true);
       const bg = await getBackgroundPermissionStatus();
       if (bg === 'denied') setBgWarning('native');
-      else if (bg === 'unsupported') setBgWarning('web');
+      else if (bg === 'unsupported') {
+        const hidden = await kv.getItem('ev_hide_web_bg_tip').catch(() => null);
+        if (!hidden) setBgWarning('web');
+      }
     })();
   }, []);
 
@@ -204,6 +209,10 @@ export default function DriveScreen() {
   const hasTrip = !!snap;
   useEffect(() => {
     if (!hasTrip) return;
+    if (Platform.OS === 'web') {
+      keepScreenOn();
+      return () => allowScreenOff();
+    }
     const on = () => {
       activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => {});
     };
@@ -211,16 +220,8 @@ export default function DriveScreen() {
     const sub = AppState.addEventListener('change', (st) => {
       if (st === 'active') on();
     });
-    let visHandler: (() => void) | null = null;
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      visHandler = () => {
-        if (document.visibilityState === 'visible') on();
-      };
-      document.addEventListener('visibilitychange', visHandler);
-    }
     return () => {
       sub.remove();
-      if (visHandler) document.removeEventListener('visibilitychange', visHandler);
       try {
         deactivateKeepAwake(KEEP_AWAKE_TAG);
       } catch {
@@ -337,68 +338,6 @@ export default function DriveScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: 120 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {bgWarning === 'native' && (
-          <View style={styles.warn}>
-            <MapPinOff size={18} color={C.amber} strokeWidth={2.2} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.warnTitle}>Tracking stops when the screen is off</Text>
-              <Text style={styles.warnBody}>
-                Allow location “Always” so km keep counting in your pocket. Missed km are still
-                recovered when you come back.
-              </Text>
-              <TouchableOpacity
-                onPress={async () => {
-                  const ok = await requestBackgroundPermission();
-                  if (ok) {
-                    setBgWarning(null);
-                    showToast('Background tracking enabled', 'green');
-                  } else if (Platform.OS === 'ios') Linking.openURL('app-settings:');
-                  else Linking.openSettings();
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.warnAction}>Allow “Always”</Text>
-              </TouchableOpacity>
-            </View>
-            <TouchableOpacity onPress={() => setBgWarning(null)} hitSlop={10}>
-              <X size={16} color={C.textMute} />
-            </TouchableOpacity>
-          </View>
-        )}
-        {bgWarning === 'web' && (
-          <View style={styles.warn}>
-            <MapPinOff size={18} color={C.amber} strokeWidth={2.2} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.warnTitle}>Keep this screen open</Text>
-              <Text style={styles.warnBody}>
-                Browsers pause GPS when you switch apps. When you come back, the km you drove are
-                recovered from your position. Install the app for full background tracking.
-              </Text>
-            </View>
-            <TouchableOpacity onPress={() => setBgWarning(null)} hitSlop={10}>
-              <X size={16} color={C.textMute} />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {chargePrompt && (
-          <View style={styles.chargeCard}>
-            <Zap size={18} color={C.green} fill={C.green} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.usualTitle}>
-                Looks like you charged {chargePrompt.from}% → {chargePrompt.to}%. Add the cost?
-              </Text>
-              <View style={styles.usualActions}>
-                <TouchableOpacity style={styles.chargeAdd} onPress={() => setChargeSheet(true)} activeOpacity={0.85}>
-                  <Text style={styles.chargeAddText}>Add charge</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setChargePrompt(null)} hitSlop={8}>
-                  <Text style={styles.usualSkip}>No</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        )}
 
         {/* HERO: range */}
         <View style={styles.hero}>
@@ -660,13 +599,63 @@ export default function DriveScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Pop-ups: one at a time — tracking tip first, then the charge question */}
+      <Popup
+        visible={bgWarning === 'web'}
+        tone={C.amber}
+        icon={<MapPinOff size={26} color={C.amber} strokeWidth={2.2} />}
+        title="Keep this screen open"
+        body="The screen stays on while you drive. If you switch apps, the browser pauses GPS — the km you drove are recovered from your position when you come back."
+        primary={{ label: 'OK', onPress: () => setBgWarning(null) }}
+        secondary={{
+          label: 'Don’t show again',
+          onPress: () => {
+            kv.setItem('ev_hide_web_bg_tip', '1').catch(() => {});
+            setBgWarning(null);
+          },
+        }}
+        onDismiss={() => setBgWarning(null)}
+      />
+      <Popup
+        visible={bgWarning === 'native'}
+        tone={C.amber}
+        icon={<MapPinOff size={26} color={C.amber} strokeWidth={2.2} />}
+        title="Tracking stops when the screen is off"
+        body="Allow location “Always” so km keep counting in your pocket. Missed km are still recovered when you come back."
+        primary={{
+          label: 'Allow “Always”',
+          onPress: async () => {
+            setBgWarning(null);
+            const ok = await requestBackgroundPermission();
+            if (ok) showToast('Background tracking enabled', 'green');
+            else if (Platform.OS === 'ios') Linking.openURL('app-settings:');
+            else Linking.openSettings();
+          },
+        }}
+        secondary={{ label: 'Not now', onPress: () => setBgWarning(null) }}
+        onDismiss={() => setBgWarning(null)}
+      />
+      <Popup
+        visible={!bgWarning && !!chargePrompt && !chargeSheet}
+        tone={C.green}
+        icon={<Zap size={26} color={C.green} fill={C.green} />}
+        title={chargePrompt ? `Looks like you charged ${chargePrompt.from}% → ${chargePrompt.to}%` : ''}
+        body="Add what you paid and your trip costs will use your real price."
+        primary={{ label: 'Add charge', onPress: () => setChargeSheet(true) }}
+        secondary={{ label: 'Not now', onPress: () => setChargePrompt(null) }}
+        onDismiss={() => setChargePrompt(null)}
+      />
+
       <ChargeSheet
         visible={chargeSheet}
         capacityKwh={trip.batteryCapacity}
         currency={currency}
         initialFrom={chargePrompt?.from}
         initialTo={chargePrompt?.to}
-        onClose={() => setChargeSheet(false)}
+        onClose={() => {
+          setChargeSheet(false);
+          setChargePrompt(null);
+        }}
         onSaved={() => {
           setChargeSheet(false);
           setChargePrompt(null);
