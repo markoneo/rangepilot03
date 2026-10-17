@@ -276,3 +276,48 @@ export async function getCurrentPosition(): Promise<{ lat: number; lon: number }
     return null;
   }
 }
+
+/**
+ * Foreground-only position watch (no background task). Used while a drive is
+ * paused, to notice when the car starts moving again.
+ */
+export function watchForeground(onFix: (coords: GeoCoords) => void): GeoWatcher {
+  if (Platform.OS === 'web') {
+    if (!isBrowser) return { remove: () => {} };
+    const id = navigator.geolocation.watchPosition(
+      (pos) =>
+        onFix({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          speed: pos.coords.speed,
+          accuracy: pos.coords.accuracy ?? null,
+          altitude: pos.coords.altitude ?? null,
+          altitudeAccuracy: pos.coords.altitudeAccuracy ?? null,
+          timestamp: pos.timestamp ?? Date.now(),
+        }),
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+    );
+    return { remove: () => navigator.geolocation.clearWatch(id) };
+  }
+  let removed = false;
+  let sub: { remove: () => void } | null = null;
+  (async () => {
+    try {
+      const Location = await import('expo-location');
+      sub = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.High, timeInterval: 2000, distanceInterval: 0 },
+        (pos) => onFix(fromExpo(pos))
+      );
+      if (removed) sub?.remove();
+    } catch {
+      // ignore
+    }
+  })();
+  return {
+    remove: () => {
+      removed = true;
+      sub?.remove();
+    },
+  };
+}

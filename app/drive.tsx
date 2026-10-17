@@ -24,7 +24,8 @@ import { buildProfile, suggest, styleOf, seasonOf, STYLES, type Profile } from '
 import { ArrivalCard, DestinationSheet } from '@/components/destination';
 import { computeRoute, routeElevation, estimateArrival, type Place } from '@/utils/maps';
 import { destinationRemainingKm, CHARGE_JUMP_PCT } from '@/utils/trackCore';
-import { getCurrentPosition } from '@/utils/geolocation';
+import { getCurrentPosition, watchForeground } from '@/utils/geolocation';
+import { createMovingDetector } from '@/utils/movingDetector';
 import { readJSON, kv } from '@/utils/kv';
 import {
   getBackgroundPermissionStatus,
@@ -75,6 +76,8 @@ export default function DriveScreen() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [chargePrompt, setChargePrompt] = useState<{ from: number; to: number } | null>(null);
   const [chargeSheet, setChargeSheet] = useState(false);
+  const [resumeAsk, setResumeAsk] = useState(false);
+  const resumeSnoozeUntil = useRef(0);
   const [currency, setCurrency] = useState('€');
   useEffect(() => {
     loadPrefs().then((p) => setCurrency(p.currency)).catch(() => {});
@@ -227,6 +230,34 @@ export default function DriveScreen() {
       }
     };
   }, [hasTrip]);
+
+  // Paused but driving again? Watch GPS and ask to resume.
+  const isPaused = snap?.phase === 'paused';
+  useEffect(() => {
+    if (!isPaused) {
+      setResumeAsk(false);
+      return;
+    }
+    const det = createMovingDetector();
+    const w = watchForeground((c) => {
+      if (Date.now() < resumeSnoozeUntil.current) {
+        det.reset();
+        return;
+      }
+      const moving = det.push({
+        lat: c.latitude,
+        lon: c.longitude,
+        ts: c.timestamp,
+        speedKmh: c.speed != null && c.speed >= 0 ? c.speed * 3.6 : null,
+        accuracy: c.accuracy,
+      });
+      if (moving) {
+        det.reset();
+        setResumeAsk(true);
+      }
+    });
+    return () => w.remove();
+  }, [isPaused]);
 
   // Tell the user when a GPS gap was reconstructed.
   useEffect(() => {
@@ -541,6 +572,32 @@ export default function DriveScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Paused, but the car is moving */}
+      <Popup
+        visible={resumeAsk && paused}
+        tone={C.green}
+        icon={<Play size={26} color={C.green} fill={C.green} />}
+        title="Driving again?"
+        body="Your drive is paused, but you're moving. Resume so the km and range keep counting."
+        primary={{
+          label: 'Resume drive',
+          onPress: () => {
+            setResumeAsk(false);
+            Trip.resumeTrip();
+          },
+        }}
+        secondary={{
+          label: 'Not now',
+          onPress: () => {
+            setResumeAsk(false);
+            resumeSnoozeUntil.current = Date.now() + 10 * 60 * 1000;
+          },
+        }}
+        onDismiss={() => {
+          setResumeAsk(false);
+          resumeSnoozeUntil.current = Date.now() + 10 * 60 * 1000;
+        }}
+      />
       {/* Pop-ups: one at a time — tracking tip first, then the charge question */}
       <Popup
         visible={bgWarning === 'web'}
