@@ -71,10 +71,8 @@ export default function DriveScreen() {
   const [pendingBattery, setPendingBattery] = useState<number | null>(null);
   const pendingRef = useRef<number | null>(null);
   const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const learnHintShown = useRef(false);
   const [coldDismissed, setColdDismissed] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [usualDismissed, setUsualDismissed] = useState(false);
   const [chargePrompt, setChargePrompt] = useState<{ from: number; to: number } | null>(null);
   const [chargeSheet, setChargeSheet] = useState(false);
   const [currency, setCurrency] = useState('€');
@@ -240,7 +238,8 @@ export default function DriveScreen() {
     if (snap.gpsGaps > lastGaps.current) {
       lastGaps.current = snap.gpsGaps;
       const km = trip.lastGap?.committedKm ?? 0;
-      if (km >= 0.1) showToast(`GPS back — added ${km.toFixed(1)} km for the gap`, 'green');
+      // No pop-up while driving — the km are simply added.
+      void km;
     }
   }, [snap?.gpsGaps]);
 
@@ -279,13 +278,8 @@ export default function DriveScreen() {
     setBatterySheet(false);
     setPendingBattery(null);
     if (v >= snap.battery + CHARGE_JUMP_PCT) setChargePrompt({ from: Math.round(snap.battery), to: Math.round(v) });
-    const r = await Trip.setBattery(v);
-    if (r.learned != null) {
-      showToast(`Consumption updated to ${r.learned.toFixed(1)} kWh/100 km from your battery`, 'blue');
-    } else if (!learnHintShown.current) {
-      learnHintShown.current = true;
-      showToast('Saved. Consumption is learned once ~3% of battery is used', 'blue');
-    }
+    // Learning happens quietly; the consumption box shows "learning / learned".
+    await Trip.setBattery(v);
   };
 
   // ± taps are collected for a moment and applied once, so the learning
@@ -423,45 +417,6 @@ export default function DriveScreen() {
             </TouchableOpacity>
           </View>
         )}
-
-        {/* Your usual for this kind of drive (season × style), until learning kicks in */}
-        {(() => {
-          if (!profile || usualDismissed || snap.learnConfidence !== 'none') return null;
-          if (snap.distanceKm < 10 || snap.movingSec < 300) return null;
-          const style = styleOf(snap.avgSpeedKmh);
-          if (!style) return null;
-          const s = suggest(profile, style, snap.outsideTempC);
-          if (!s || Math.abs(s.value - snap.consumption) < 1) return null;
-          const season = s.source === 'season' ? seasonOf(snap.outsideTempC) : null;
-          const styleLabel = STYLES.find((x) => x.key === style)!.label.toLowerCase();
-          return (
-            <View style={styles.usual}>
-              <Sparkles size={18} color={C.blue} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.usualTitle}>
-                  Your usual for {styleLabel} driving{season ? ` in ${season} weather` : ''}: {s.value.toFixed(1)} kWh/100
-                </Text>
-                <Text style={styles.usualBody}>Learned from your past trips. Now set: {snap.consumption.toFixed(1)}.</Text>
-                <View style={styles.usualActions}>
-                  <TouchableOpacity
-                    style={styles.usualUse}
-                    onPress={() => {
-                      Trip.setConsumption(s.value);
-                      setUsualDismissed(true);
-                      showToast(`Consumption set to ${s.value.toFixed(1)} kWh/100`, 'blue');
-                    }}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.usualUseText}>Use {s.value.toFixed(1)}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setUsualDismissed(true)} hitSlop={8}>
-                    <Text style={styles.usualSkip}>Keep {snap.consumption.toFixed(1)}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          );
-        })()}
 
         {/* Can I make it? */}
         {trip.destination ? (
