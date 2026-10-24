@@ -381,7 +381,6 @@ export default function DriveScreen() {
                 <Text style={styles.heroLabel}>
                   {snap.reservePercent > 0 ? `Range to ${snap.reservePercent}%` : 'Range left'}
                 </Text>
-                {cold && <ColdChip tempC={snap.outsideTempC!} onPress={() => setColdOpen(true)} />}
               </View>
               <Text style={[styles.heroValue, { color: snap.usableBattery <= 0 ? C.red : C.text }]}>
                 {Math.round(snap.rangeKm)}
@@ -437,6 +436,11 @@ export default function DriveScreen() {
             <Text style={styles.heroMetaText}>
               {kwhLeft.toFixed(1)} kWh usable
             </Text>
+            {cold && (
+              <View style={{ marginLeft: 'auto', alignSelf: 'center' }}>
+                <ColdChip tempC={snap.outsideTempC!} onPress={() => setColdOpen(true)} />
+              </View>
+            )}
           </View>
         </View>
 
