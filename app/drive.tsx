@@ -16,7 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { keepScreenOn, allowScreenOff } from '@/utils/screenAwake';
 import { ChevronDown, Pause, Play, Flag, Zap, MapPinOff, X, Sparkles, Search, Snowflake } from 'lucide-react-native';
-import { COLD_LIMIT_C } from '@/utils/weather';
+import { COLD_LIMIT_C, coldNoteSeenToday, markColdNoteSeen } from '@/utils/weather';
+import { ColdChip, COLD_BLUE } from '@/components/ColdChip';
 import { ChargeSheet } from '@/components/ChargeSheet';
 import { Popup } from '@/components/Popup';
 import { loadCharges } from '@/utils/charges';
@@ -72,7 +73,7 @@ export default function DriveScreen() {
   const [pendingBattery, setPendingBattery] = useState<number | null>(null);
   const pendingRef = useRef<number | null>(null);
   const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [coldDismissed, setColdDismissed] = useState(false);
+  const [coldOpen, setColdOpen] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [chargePrompt, setChargePrompt] = useState<{ from: number; to: number } | null>(null);
   const [chargeSheet, setChargeSheet] = useState(false);
@@ -231,6 +232,15 @@ export default function DriveScreen() {
     };
   }, [hasTrip]);
 
+  // Cold-weather note pops up once a day; afterwards only the ❄ chip shows.
+  const cold = snap?.outsideTempC != null && snap.outsideTempC < COLD_LIMIT_C;
+  useEffect(() => {
+    if (!cold) return;
+    coldNoteSeenToday().then((seen) => {
+      if (!seen) setColdOpen(true);
+    });
+  }, [cold]);
+
   // Paused but driving again? Watch GPS and ask to resume.
   const isPaused = snap?.phase === 'paused';
   useEffect(() => {
@@ -371,6 +381,7 @@ export default function DriveScreen() {
                 <Text style={styles.heroLabel}>
                   {snap.reservePercent > 0 ? `Range to ${snap.reservePercent}%` : 'Range left'}
                 </Text>
+                {cold && <ColdChip tempC={snap.outsideTempC!} onPress={() => setColdOpen(true)} />}
               </View>
               <Text style={[styles.heroValue, { color: snap.usableBattery <= 0 ? C.red : C.text }]}>
                 {Math.round(snap.rangeKm)}
@@ -428,26 +439,6 @@ export default function DriveScreen() {
             </Text>
           </View>
         </View>
-
-        {/* Cold weather note */}
-        {snap.outsideTempC != null && snap.outsideTempC < COLD_LIMIT_C && !coldDismissed && (
-          <View style={styles.cold}>
-            <Snowflake size={18} color="#7DD3FC" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.coldTitle}>
-                {Math.round(snap.outsideTempC)}°C outside — expect 20–30% higher consumption
-              </Text>
-              <Text style={styles.coldBody}>
-                {snap.learnConfidence === 'medium' || snap.learnConfidence === 'high'
-                  ? 'Your learned consumption already includes today’s conditions.'
-                  : `Range could be closer to ${Math.round(snap.rangeKm / 1.3)}–${Math.round(snap.rangeKm / 1.2)} km. Correct the battery % after ~20 km and the app adapts.`}
-              </Text>
-            </View>
-            <TouchableOpacity onPress={() => setColdDismissed(true)} hitSlop={10}>
-              <X size={16} color={C.textMute} />
-            </TouchableOpacity>
-          </View>
-        )}
 
         {/* Can I make it? */}
         {trip.destination ? (
@@ -572,6 +563,28 @@ export default function DriveScreen() {
         </TouchableOpacity>
       </View>
 
+      <Popup
+        visible={coldOpen && cold && !bgWarning}
+        tone={COLD_BLUE}
+        icon={<Snowflake size={26} color={COLD_BLUE} />}
+        title={`${Math.round(snap.outsideTempC ?? 0)}°C outside — expect 20–30% higher consumption`}
+        body={
+          snap.learnConfidence === 'medium' || snap.learnConfidence === 'high'
+            ? 'Your learned consumption already includes today’s conditions.'
+            : `Range could be closer to ${Math.round(snap.rangeKm / 1.3)}–${Math.round(snap.rangeKm / 1.2)} km. Correct the battery % after ~20 km and the app adapts.`
+        }
+        primary={{
+          label: 'OK',
+          onPress: () => {
+            setColdOpen(false);
+            markColdNoteSeen();
+          },
+        }}
+        onDismiss={() => {
+          setColdOpen(false);
+          markColdNoteSeen();
+        }}
+      />
       {/* Paused, but the car is moving */}
       <Popup
         visible={resumeAsk && paused}
@@ -635,7 +648,7 @@ export default function DriveScreen() {
         onDismiss={() => setBgWarning(null)}
       />
       <Popup
-        visible={!bgWarning && !!chargePrompt && !chargeSheet}
+        visible={!bgWarning && !(coldOpen && cold) && !!chargePrompt && !chargeSheet}
         tone={C.green}
         icon={<Zap size={26} color={C.green} fill={C.green} />}
         title={chargePrompt ? `Looks like you charged ${chargePrompt.from}% → ${chargePrompt.to}%` : ''}

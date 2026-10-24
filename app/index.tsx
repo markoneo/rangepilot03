@@ -29,7 +29,9 @@ import { getCurrentPosition } from '@/utils/geolocation';
 import { writeJSON } from '@/utils/kv';
 import { Search, Snowflake, Zap as ZapIcon } from 'lucide-react-native';
 import { loadCharges, averagePrice } from '@/utils/charges';
-import { getOutsideTempC, COLD_LIMIT_C } from '@/utils/weather';
+import { getOutsideTempC, COLD_LIMIT_C, coldNoteSeenToday, markColdNoteSeen } from '@/utils/weather';
+import { ColdChip, COLD_BLUE } from '@/components/ColdChip';
+import { Popup } from '@/components/Popup';
 import { buildProfile, suggest, seasonOf, type Style } from '@/utils/learnedProfile';
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -89,6 +91,15 @@ export default function HomeScreen() {
   } | null>(null);
 
   const [tempC, setTempC] = useState<number | null>(null);
+  const cold = tempC != null && tempC < COLD_LIMIT_C;
+  const [coldOpen, setColdOpen] = useState(false);
+  // Cold-weather note pops up once a day; afterwards only the ❄ chip shows.
+  useEffect(() => {
+    if (!cold) return;
+    coldNoteSeenToday().then((seen) => {
+      if (!seen) setColdOpen(true);
+    });
+  }, [cold]);
   const [avgPrice, setAvgPrice] = useState<number | null>(null);
   useFocusEffect(
     useCallback(() => {
@@ -273,6 +284,7 @@ export default function HomeScreen() {
           <View style={styles.heroTop}>
             <Zap size={14} color={C.blue} fill={C.blue} />
             <Text style={styles.heroLabel}>Estimated range</Text>
+            {cold && <ColdChip tempC={tempC!} onPress={() => setColdOpen(true)} />}
           </View>
           <Text style={styles.heroValue}>
             {Math.round(range)}
@@ -286,21 +298,6 @@ export default function HomeScreen() {
             10% battery = {Math.round((car.batteryCapacity * 10) / consumption)} km
           </Text>
         </View>
-
-        {tempC != null && tempC < COLD_LIMIT_C && (
-          <View style={styles.cold}>
-            <Snowflake size={18} color="#7DD3FC" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.coldTitle}>
-                {Math.round(tempC)}°C outside — expect 20–30% higher consumption
-              </Text>
-              <Text style={styles.coldBody}>
-                Realistic range today: about {Math.round(range / 1.3)}–{Math.round(range / 1.2)} km. Correct the
-                battery % during the drive and the app learns today’s real consumption.
-              </Text>
-            </View>
-          </View>
-        )}
 
         {/* Can I make it? */}
         {check ? (
@@ -453,6 +450,24 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      <Popup
+        visible={coldOpen && cold}
+        tone={COLD_BLUE}
+        icon={<Snowflake size={26} color={COLD_BLUE} />}
+        title={`${Math.round(tempC ?? 0)}°C outside — expect 20–30% higher consumption`}
+        body={`Realistic range today: about ${Math.round(range / 1.3)}–${Math.round(range / 1.2)} km. Correct the battery % during the drive and the app learns today’s real consumption.`}
+        primary={{
+          label: 'OK',
+          onPress: () => {
+            setColdOpen(false);
+            markColdNoteSeen();
+          },
+        }}
+        onDismiss={() => {
+          setColdOpen(false);
+          markColdNoteSeen();
+        }}
+      />
 
       <DestinationSheet
         visible={destSheet}
