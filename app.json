@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Range Pilot",
-    "slug": "range-pilot",
+    "slug": "rangepilot",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -19,7 +19,8 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Range Pilot needs background location so it can keep tracking your drive when the screen is off or you switch apps.",
         "NSLocationAlwaysUsageDescription": "Range Pilot needs background location so it can keep tracking your drive when the screen is off or you switch apps."
       },
-      "icon": "./assets/images/icon.png"
+      "icon": "./assets/images/icon.png",
+      "bundleIdentifier": "com.artcomp.rangepilot"
     },
     "android": {
       "permissions": [
@@ -33,7 +34,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#FAFAFB"
-      }
+      },
+      "package": "com.artcomp.rangepilot"
     },
     "web": {
       "bundler": "metro",
@@ -58,6 +60,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "owner": "ridepilots-team",
+    "extra": {
+      "eas": {
+        "projectId": "391a0687-dc17-4c0e-ac38-525e9eaadba5"
+      }
     }
   }
 }
