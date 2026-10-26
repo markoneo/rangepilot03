@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Platform, View } from 'react-native';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Platform } from 'react-native';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { useFonts } from 'expo-font';
@@ -11,8 +11,7 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
-import { useSession } from '@/utils/auth';
-import { setActiveUser, pushLocalTripsToCloud } from '@/utils/storage';
+import { migrateToLocal } from '@/utils/migrateLocal';
 import { resumeTrackingIfNeeded } from '@/utils/tripTracker';
 
 SplashScreen.preventAutoHideAsync();
@@ -26,6 +25,21 @@ export default function RootLayout() {
     'Inter-SemiBold': Inter_600SemiBold,
     'Inter-Bold': Inter_700Bold,
   });
+
+  // One-time move of old account data to the device (max ~6 s, never blocks for long).
+  const [dataReady, setDataReady] = useState(false);
+  useEffect(() => {
+    let done = false;
+    const finish = () => {
+      if (!done) {
+        done = true;
+        setDataReady(true);
+      }
+    };
+    migrateToLocal().finally(finish);
+    const t = setTimeout(finish, 6000);
+    return () => clearTimeout(t);
+  }, []);
 
   // If a drive was in progress when the app was killed, restart GPS right
   // away — before any screen mounts — so no more distance is lost.
@@ -96,15 +110,13 @@ export default function RootLayout() {
     );
   }, []);
 
-  if (!fontsLoaded && !fontError) {
+  if ((!fontsLoaded && !fontError) || !dataReady) {
     return null;
   }
 
   return (
     <>
-      <AuthGate />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0B0F14' } }}>
-        <Stack.Screen name="auth" />
         <Stack.Screen name="index" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="drive-permission" />
@@ -118,29 +130,4 @@ export default function RootLayout() {
       <StatusBar style="light" />
     </>
   );
-}
-
-function AuthGate() {
-  const { session, loading, userId } = useSession();
-  const segments = useSegments();
-  const router = useRouter();
-
-  useEffect(() => {
-    setActiveUser(userId);
-    if (userId) {
-      pushLocalTripsToCloud().catch(() => {});
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    if (loading) return;
-    const onAuthRoute = segments[0] === 'auth';
-    if (!session && !onAuthRoute) {
-      router.replace('/auth');
-    } else if (session && onAuthRoute) {
-      router.replace('/');
-    }
-  }, [loading, session, segments]);
-
-  return <View />;
 }

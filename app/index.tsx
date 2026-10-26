@@ -19,8 +19,7 @@ import {
 } from '@/utils/storage';
 import { rangeFor } from '@/utils/trackCore';
 import * as Trip from '@/utils/tripTracker';
-import { Zap, Navigation, Clock, ChartLine as LineChart, ChevronRight, Radio } from 'lucide-react-native';
-import ProfileMenu from '@/components/ProfileMenu';
+import { Zap, Navigation, Clock, ChartLine as LineChart, ChevronRight, Radio, Settings as SettingsIcon } from 'lucide-react-native';
 import { C, F, batteryColor, fmtMoney } from '@/constants/theme';
 import { Card, Chips, Label, NumberSheet, Stepper } from '@/components/ui';
 import { ArrivalCard, DestinationSheet } from '@/components/destination';
@@ -260,7 +259,14 @@ export default function HomeScreen() {
             </Text>
             <Text style={styles.carSub}>{car.batteryCapacity} kWh battery</Text>
           </View>
-          <ProfileMenu size={48} />
+          <TouchableOpacity
+            style={styles.settingsBtn}
+            onPress={() => router.push('/settings')}
+            activeOpacity={0.8}
+            accessibilityLabel="Settings"
+          >
+            <SettingsIcon size={22} color={C.textDim} />
+          </TouchableOpacity>
         </View>
 
         {active && (
@@ -521,6 +527,16 @@ function WeekStat({ value, unit }: { value: string; unit: string }) {
 }
 
 const styles = StyleSheet.create({
+  settingsBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
   root: { flex: 1, backgroundColor: C.bg },
   scroll: { paddingHorizontal: 16, paddingTop: 12 },
   topBar: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 12 },

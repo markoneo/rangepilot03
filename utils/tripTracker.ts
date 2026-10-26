@@ -36,10 +36,8 @@ import { readJSON, writeJSON, kv } from './kv';
 import {
   activeTripKey,
   clearActiveSession,
-  deleteActiveSessionFromCloud,
   loadPrefs,
   saveTrip,
-  syncActiveSessionToCloud,
   type TripRecord,
 } from './storage';
 import { logTunnelGap, resolveTunnelDistance } from './tunnelBridge';
@@ -55,12 +53,10 @@ let loaded = false;
 let loadPromise: Promise<TripState | null> | null = null;
 let watcher: GeoWatcher | null = null;
 let lastSaveAt = 0;
-let lastCloudAt = 0;
 let chain: Promise<unknown> = Promise.resolve();
 const listeners = new Set<Listener>();
 
 const SAVE_EVERY_MS = 3000;
-const CLOUD_EVERY_MS = 30000;
 const TEMP_EVERY_MS = 10 * 60 * 1000;
 
 function notify() {
@@ -87,41 +83,8 @@ async function persist(force = false) {
   lastSaveAt = now;
   state.updatedAt = now;
   await writeJSON(activeTripKey(), state);
-  if (force || now - lastCloudAt > CLOUD_EVERY_MS) {
-    lastCloudAt = now;
-    syncActiveSessionToCloud(toCloud(state)).catch(() => {});
-  }
 }
 
-function toCloud(s: TripState) {
-  const snap = snapshot(s, Date.now());
-  return {
-    id: s.id,
-    startedAt: new Date(s.startedAt).toISOString(),
-    updatedAt: new Date(s.updatedAt).toISOString(),
-    phase: s.phase,
-    carName: s.carName,
-    batteryCapacity: s.batteryCapacity,
-    startBattery: s.startBattery,
-    currentBattery: Math.round(snap.battery * 10) / 10,
-    batteryAnchor: s.batteryAnchor,
-    batteryAnchorDistance: s.batteryAnchorDistance,
-    distanceKm: s.distanceKm,
-    elapsedSeconds: snap.elapsedSec,
-    consumption: s.consumption,
-    reserveEnabled: s.reservePercent > 0,
-    targetBattery: s.reservePercent,
-    minElevationM: s.minElevationM,
-    maxElevationM: s.maxElevationM,
-    minTemperatureC: s.minTemperatureC,
-    maxTemperatureC: s.maxTemperatureC,
-    minSpeedKmh: s.minSpeedKmh,
-    maxSpeedKmh: s.maxSpeedKmh,
-    lastCoordLat: s.lastFix?.lat ?? null,
-    lastCoordLon: s.lastFix?.lon ?? null,
-    lastSpeedKmh: s.lastSpeedKmh,
-  };
-}
 
 export function loadActiveTrip(): Promise<TripState | null> {
   if (loaded) return Promise.resolve(state);
@@ -404,7 +367,6 @@ export async function finishTrip(endBatteryInput: number | null): Promise<TripRe
 
     await saveTrip(trip);
     await kv.removeItem(activeTripKey());
-    deleteActiveSessionFromCloud(s.id);
     state = null;
     notify();
     return trip;
@@ -417,7 +379,6 @@ export async function discardTrip() {
     const id = state.id;
     stopWatching();
     await kv.removeItem(activeTripKey());
-    deleteActiveSessionFromCloud(id);
     state = null;
     notify();
   });
