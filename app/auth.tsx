@@ -99,7 +99,7 @@ export default function AuthScreen() {
           <Image
             source={require('../assets/images/range-pilot-icon.webp')}
             style={styles.logoImage}
-            resizeMode="contain"
+            resizeMode="cover"
           />
         </View>
 
@@ -256,8 +256,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   logoImage: {
-    width: 48,
-    height: 48,
+    width: 72,
+    height: 72,
   },
   title: {
     fontSize: 26,
