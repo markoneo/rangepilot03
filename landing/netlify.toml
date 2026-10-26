@@ -1,0 +1,11 @@
+# Landing site (rangepilot.net) — static, no build.
+[build]
+  publish = "."
+  command = "echo landing"
+  # Only deploy when something in landing/ changed (saves Netlify credits).
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- ."
+
+[[headers]]
+  for = "/img/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"

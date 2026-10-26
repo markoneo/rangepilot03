@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Range Pilot — your real EV range</title>
+<meta name="description" content="Range Pilot shows how far your electric car will really go — it learns your consumption, speed and weather, and tells you if you'll make it.">
+<link rel="icon" href="/icon-32.png" sizes="32x32"><link rel="apple-touch-icon" href="/icon-180.png"><meta property="og:image" content="https://rangepilot.net/img/logo.webp">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0F14; --card:#111827; --card2:#151d2b; --border:#1F2937;
+    --text:#F3F4F6; --dim:#9CA3AF; --mute:#6B7280;
+    --blue:#3B82F6; --green:#22C55E; --amber:#F59E0B; --red:#EF4444;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:10;background:rgba(11,15,20,.82);backdrop-filter:blur(12px);border-bottom:1px solid rgba(31,41,55,.6)}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.2px}
+  .brand img{width:34px;height:34px;border-radius:9px}
+  .navlinks{display:flex;gap:24px;align-items:center;font-size:14.5px;color:var(--dim)}
+  .navlinks a:hover{color:var(--text)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;border-radius:14px;padding:13px 20px;font-size:15.5px;transition:transform .15s,background .15s}
+  .btn:active{transform:scale(.98)}
+  .btn-primary{background:var(--blue);color:#fff}
+  .btn-primary:hover{background:#2f74e6}
+  .btn-ghost{border:1px solid var(--border);color:var(--text);background:var(--card)}
+  .btn-sm{padding:9px 15px;font-size:14px;border-radius:11px}
+
+  /* hero */
+  .hero{position:relative;overflow:hidden;padding:72px 0 40px}
+  .hero::before{content:"";position:absolute;inset:-20% -10% auto;height:560px;background:radial-gradient(600px 300px at 20% 30%,rgba(34,197,94,.16),transparent 70%),radial-gradient(600px 320px at 80% 20%,rgba(59,130,246,.18),transparent 70%);pointer-events:none}
+  .hero .wrap{position:relative;display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);background:var(--card);border:1px solid var(--border);padding:6px 12px;border-radius:999px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green)}
+  h1{font-size:clamp(38px,5.6vw,62px);line-height:1.04;letter-spacing:-1.6px;font-weight:800;margin:18px 0 18px}
+  .grad{background:linear-gradient(90deg,var(--green),var(--amber) 55%,var(--red));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lead{font-size:18.5px;color:var(--dim);max-width:520px}
+  .ctas{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+  .store{display:inline-flex;align-items:center;gap:10px;padding:9px 16px;min-width:168px;border-radius:14px;border:1px solid var(--border);background:#000;color:#fff;opacity:.85}
+  .store small{display:block;font-size:10.5px;color:var(--dim);line-height:1.1}
+  .store b{display:block;font-size:15px;line-height:1.2}
+  .stores{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .note{margin-top:14px;font-size:13px;color:var(--mute)}
+
+  .phones{position:relative;height:560px}
+  .phone{position:absolute;width:240px;border-radius:34px;padding:9px;background:#1b2230;border:1px solid #2a3344;box-shadow:0 30px 60px rgba(0,0,0,.55)}
+  .phone img{width:100%;display:block;border-radius:26px}
+  .phone.p1{left:6%;top:56px;transform:rotate(-6deg)}
+  .phone.p2{left:36%;top:0;z-index:2;width:256px}
+  .phone.p3{right:0;top:70px;transform:rotate(6deg)}
+
+  /* stats band */
+  .band{border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--card)}
+  .band .wrap{display:grid;grid-template-columns:repeat(4,1fr);gap:0}
+  .band div.k{padding:26px 10px;text-align:center}
+  .band b{display:block;font-size:26px;font-weight:800;letter-spacing:-.6px}
+  .band span{font-size:13.5px;color:var(--dim)}
+
+  section{padding:88px 0}
+  h2{font-size:clamp(28px,3.6vw,40px);letter-spacing:-1px;line-height:1.1;font-weight:800}
+  .sub{color:var(--dim);font-size:17px;margin-top:12px;max-width:620px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:24px}
+  .ico{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;margin-bottom:16px}
+  .card h3{font-size:18px;font-weight:700;margin-bottom:6px}
+  .card p{color:var(--dim);font-size:15px}
+
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px;counter-reset:s}
+  .step{position:relative;background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--border);border-radius:20px;padding:26px}
+  .step::before{counter-increment:s;content:counter(s);display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:rgba(59,130,246,.15);color:var(--blue);font-weight:800;margin-bottom:14px}
+  .step h3{font-size:17.5px;margin-bottom:6px}
+  .step p{color:var(--dim);font-size:15px}
+
+  .cta{border-radius:28px;padding:48px;background:radial-gradient(500px 220px at 15% 0%,rgba(34,197,94,.18),transparent 70%),radial-gradient(500px 220px at 90% 100%,rgba(59,130,246,.2),transparent 70%),var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
+  .cta h2{font-size:clamp(26px,3vw,34px)}
+
+  footer{border-top:1px solid var(--border);padding:40px 0 48px;color:var(--dim);font-size:14px}
+  footer .wrap{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:28px}
+  footer h4{color:var(--text);font-size:14px;margin-bottom:10px}
+  footer a:hover{color:var(--text)}
+  footer li{list-style:none;margin:6px 0}
+  .copy{margin-top:28px;color:var(--mute);font-size:12.5px}
+
+  @media (max-width:900px){
+    .hero{padding:44px 0 20px}
+    .hero .wrap{grid-template-columns:1fr;gap:28px}
+    .phones{height:440px;max-width:420px;margin:0 auto;width:100%}
+    .phone{width:180px;border-radius:28px;padding:7px}
+    .phone img{border-radius:21px}
+    .phone.p2{width:196px;left:50%;margin-left:-98px}
+    .phone.p1{left:0;top:48px}
+    .phone.p3{right:0;top:60px}
+    .grid,.steps{grid-template-columns:1fr}
+    .band .wrap{grid-template-columns:repeat(2,1fr)}
+    .navlinks .hide-m{display:none}
+    section{padding:64px 0}
+    .cta{padding:30px}
+    footer .wrap{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="/img/logo.webp" alt="Range Pilot logo">Range Pilot</a>
+    <div class="navlinks">
+      <a class="hide-m" href="#features">Features</a>
+      <a class="hide-m" href="#how">How it works</a>
+      <a class="btn btn-primary btn-sm" href="https://app.rangepilot.net">Open app</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow"><span class="dot"></span>For electric car drivers</span>
+      <h1>Know your <span class="grad">real</span> EV range.</h1>
+      <p class="lead">Range Pilot learns how your car really drives — your speed, the weather, your battery — and tells you how far you can go and whether you'll make it.</p>
+      <div class="ctas">
+        <a class="btn btn-primary" href="https://app.rangepilot.net">Start free in your browser</a>
+      </div>
+      <div class="stores">
+        <span class="store" aria-label="Google Play — coming soon">
+          <svg width="22" height="24" viewBox="0 0 22 24" aria-hidden="true"><path fill="#34A853" d="M1 1l11.3 11L1 23c-.4-.3-.6-.8-.6-1.4V2.4C.4 1.8.6 1.3 1 1z"/><path fill="#FBBC04" d="M16 8.3l-3.7 3.7L16 15.7l4.2-2.4c1.2-.7 1.2-1.9 0-2.6L16 8.3z"/><path fill="#EA4335" d="M12.3 12L1 23c.4.4 1.1.4 1.9 0L16 15.7 12.3 12z"/><path fill="#4285F4" d="M12.3 12L16 8.3 2.9 1C2.1.6 1.4.6 1 1l11.3 11z"/></svg>
+          <span><small>Coming soon on</small><b>Google Play</b></span>
+        </span>
+        <span class="store" aria-label="App Store — coming soon">
+          <svg width="20" height="24" viewBox="0 0 384 512" aria-hidden="true"><path fill="#fff" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
+          <span><small>Coming soon on the</small><b>App Store</b></span>
+        </span>
+      </div>
+      <p class="note">No card, no hardware. Works with any electric car.</p>
+    </div>
+    <div class="phones" aria-hidden="true">
+      <div class="phone p1"><img src="/img/home.webp" alt=""></div>
+      <div class="phone p2"><img src="/img/drive.webp" alt=""></div>
+      <div class="phone p3"><img src="/img/stats.webp" alt=""></div>
+    </div>
+  </div>
+</header>
+
+<div class="band">
+  <div class="wrap">
+    <div class="k"><b>10% = 31 km</b><span>see what each % is worth</span></div>
+    <div class="k"><b>Live</b><span>range updates with your speed</span></div>
+    <div class="k"><b>Learns</b><span>from every battery correction</span></div>
+    <div class="k"><b>€/trip</b><span>real cost from your charges</span></div>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Everything you need between two charges</h2>
+    <p class="sub">Range Pilot sits next to your car's own estimate and gives you the number you can actually trust.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="ico" style="background:rgba(34,197,94,.14)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M4.2 7l2.6 1.5M17.2 15.5L19.8 17M4.2 17l2.6-1.5M17.2 8.5L19.8 7"/><circle cx="12" cy="12" r="3.5"/></svg></div>
+        <h3>Learns your real consumption</h3>
+        <p>Correct the battery % when your car shows a different number — the app learns and gets more accurate every drive.</p>
+      </div>
+      <div class="card">
+        <div class="ico" style="background:rgba(245,158,11,.14)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15a8 8 0 1116 0"/><path d="M12 15l4-5"/></svg></div>
+        <h3>Reacts to your speed</h3>
+        <p>Motorway at 130 km/h costs much more than 90. Range and consumption update live as you drive.</p>
+      </div>
+      <div class="card">
+        <div class="ico" style="background:rgba(59,130,246,.14)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0119 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></div>
+        <h3>Can I make it?</h3>
+        <p>Enter a destination and see the battery % you'll arrive with — including hills along the route.</p>
+      </div>
+      <div class="card">
+        <div class="ico" style="background:rgba(125,211,252,.14)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7DD3FC" stroke-width="2.2" stroke-linecap="round"><path d="M12 2v20M4.9 6l14.2 12M19.1 6L4.9 18"/></svg></div>
+        <h3>Weather aware</h3>
+        <p>Below 10 °C an EV uses 20–30% more. Range Pilot tells you and keeps season-specific consumption for city, mixed and highway.</p>
+      </div>
+      <div class="card">
+        <div class="ico" style="background:rgba(239,68,68,.14)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18M6 18V9a6 6 0 0112 0v9"/></svg></div>
+        <h3>Tunnels & lost GPS</h3>
+        <p>When the signal drops in a tunnel, the distance is recovered from your position when GPS returns — no lost kilometres.</p>
+      </div>
+      <div class="card">
+        <div class="ico" style="background:rgba(34,197,94,.14)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg></div>
+        <h3>Charging costs & stats</h3>
+        <p>Log your charges and every trip shows what it really cost. Weekly and monthly statistics show where your energy goes.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how" style="padding-top:0">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step"><h3>Add your car</h3><p>Name and battery size — that's all it needs.</p></div>
+      <div class="step"><h3>Start a drive</h3><p>Set your battery %, tap Start. Range, consumption and 10% = km update live.</p></div>
+      <div class="step"><h3>Correct now and then</h3><p>When your car's % differs, adjust it. Range Pilot learns and gets sharper every trip.</p></div>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="cta">
+      <div>
+        <h2>Drive with the number you can trust.</h2>
+        <p class="sub" style="margin-top:8px">Free to use in your browser. Android and iPhone apps coming soon.</p>
+        <div class="stores" style="margin-top:18px">
+        <span class="store" aria-label="Google Play — coming soon">
+          <svg width="22" height="24" viewBox="0 0 22 24" aria-hidden="true"><path fill="#34A853" d="M1 1l11.3 11L1 23c-.4-.3-.6-.8-.6-1.4V2.4C.4 1.8.6 1.3 1 1z"/><path fill="#FBBC04" d="M16 8.3l-3.7 3.7L16 15.7l4.2-2.4c1.2-.7 1.2-1.9 0-2.6L16 8.3z"/><path fill="#EA4335" d="M12.3 12L1 23c.4.4 1.1.4 1.9 0L16 15.7 12.3 12z"/><path fill="#4285F4" d="M12.3 12L16 8.3 2.9 1C2.1.6 1.4.6 1 1l11.3 11z"/></svg>
+          <span><small>Coming soon on</small><b>Google Play</b></span>
+        </span>
+        <span class="store" aria-label="App Store — coming soon">
+          <svg width="20" height="24" viewBox="0 0 384 512" aria-hidden="true"><path fill="#fff" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>
+          <span><small>Coming soon on the</small><b>App Store</b></span>
+        </span>
+      </div>
+      </div>
+      <a class="btn btn-primary" href="https://app.rangepilot.net">Open Range Pilot</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a class="brand" href="#"><img src="/img/logo.webp" alt="">Range Pilot</a>
+      <p style="margin-top:12px">Artcomp Marko Keder s.p.<br>Gozdna pot 10, 6240 Kozina-Hrpelje, Slovenia<br>VAT: SI81926561</p>
+    </div>
+    <div>
+      <h4>Contact</h4>
+      <ul>
+        <li><a href="mailto:info@artcomp.net">info@artcomp.net</a></li>
+        <li><a href="https://www.artcomp.net">www.artcomp.net</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Legal</h4>
+      <ul>
+        <li><a href="/privacy/">Privacy policy</a></li>
+        <li><a href="/delete-account/">Delete your account</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap"><p class="copy">© 2026 Artcomp Marko Keder s.p. Range Pilot estimates are guidance only — always check your car's own display.</p></div>
+</footer>
+
+</body>
+</html>

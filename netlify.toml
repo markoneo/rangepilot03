@@ -1,6 +1,8 @@
 [build]
   command = "npx expo export --platform web --output-dir dist"
   publish = "dist"
+  # Skip app deploys when only the landing page (landing/) changed.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ':(exclude)landing'"
 
 [build.environment]
   NODE_VERSION = "20"
