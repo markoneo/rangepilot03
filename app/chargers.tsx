@@ -118,6 +118,13 @@ export default function ChargersScreen() {
             <View style={{ height: 6 }} />
           </>
         }
+        ListFooterComponent={
+          chargers.length > 0 ? (
+            <Text style={styles.attrib} onPress={() => Linking.openURL('https://openchargemap.org')}>
+              Charger data © Open Charge Map contributors (CC BY 4.0)
+            </Text>
+          ) : null
+        }
         renderItem={({ item }) => {
           const arr = arrivalPct(item, battery, capacity, consumption);
           const reachable = arr >= 0;
@@ -243,5 +250,6 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     backgroundColor: C.blueDim,
   },
+  attrib: { color: C.textMute, fontSize: 11.5, fontFamily: F.regular, textAlign: 'center', marginTop: 18 },
   goText: { color: C.blue, fontFamily: F.semibold, fontSize: 14 },
 });
