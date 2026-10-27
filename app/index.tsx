@@ -361,6 +361,17 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
+        <TouchableOpacity style={styles.chargersBtn} onPress={() => router.push('/chargers' as any)} activeOpacity={0.85}>
+          <View style={styles.chargersIcon}>
+            <ZapIcon size={18} color={C.green} fill={C.green} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.chargersTitle}>Chargers nearby</Text>
+            <Text style={styles.chargersSub}>See which ones you can reach — and with how much battery</Text>
+          </View>
+          <ChevronRight size={18} color={C.textDim} />
+        </TouchableOpacity>
+
         {/* Battery */}
         <Card>
           <Label>Battery now</Label>
@@ -654,6 +665,20 @@ const styles = StyleSheet.create({
   weekRow: { flexDirection: 'row' },
   weekValue: { fontSize: 20, fontFamily: F.bold, color: C.text, letterSpacing: -0.5 },
   weekUnit: { fontSize: 11, fontFamily: F.medium, color: C.textMute, marginTop: 2 },
+  chargersBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 14,
+  },
+  chargersIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.greenDim, alignItems: 'center', justifyContent: 'center' },
+  chargersTitle: { fontSize: 15.5, fontFamily: F.semibold, color: C.text },
+  chargersSub: { fontSize: 12.5, fontFamily: F.regular, color: C.textDim, marginTop: 2 },
   links: { flexDirection: 'row', gap: 10 },
   link: {
     flex: 1,
