@@ -68,7 +68,7 @@ export default function DriveScreen() {
   const [batterySheet, setBatterySheet] = useState(false);
   const [consSheet, setConsSheet] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
-  const [bgWarning, setBgWarning] = useState<'native' | 'web' | null>(null);
+  const [bgWarning, setBgWarning] = useState<'web' | null>(null);
   const [destSheet, setDestSheet] = useState(false);
   const [pendingBattery, setPendingBattery] = useState<number | null>(null);
   const pendingRef = useRef<number | null>(null);
@@ -199,8 +199,17 @@ export default function DriveScreen() {
       }
       setReady(true);
       const bg = await getBackgroundPermissionStatus();
-      if (bg === 'denied') setBgWarning('native');
-      else if (bg === 'unsupported') {
+      if (bg === 'denied') {
+        // App (Android/iPhone): no pop-up of our own. Ask once via the phone's
+        // own permission screen for "Allow all the time" so km keep counting
+        // with the screen off.
+        const asked = await kv.getItem('ev_bg_permission_asked').catch(() => null);
+        if (!asked) {
+          await kv.setItem('ev_bg_permission_asked', '1').catch(() => {});
+          requestBackgroundPermission().catch(() => {});
+        }
+      } else if (bg === 'unsupported') {
+        // Browser only — the installed app keeps tracking in the background.
         const hidden = await kv.getItem('ev_hide_web_bg_tip').catch(() => null);
         if (!hidden) setBgWarning('web');
       }
@@ -630,25 +639,6 @@ export default function DriveScreen() {
             setBgWarning(null);
           },
         }}
-        onDismiss={() => setBgWarning(null)}
-      />
-      <Popup
-        visible={bgWarning === 'native'}
-        tone={C.amber}
-        icon={<MapPinOff size={26} color={C.amber} strokeWidth={2.2} />}
-        title="Tracking stops when the screen is off"
-        body="Allow location “Always” so km keep counting in your pocket. Missed km are still recovered when you come back."
-        primary={{
-          label: 'Allow “Always”',
-          onPress: async () => {
-            setBgWarning(null);
-            const ok = await requestBackgroundPermission();
-            if (ok) showToast('Background tracking enabled', 'green');
-            else if (Platform.OS === 'ios') Linking.openURL('app-settings:');
-            else Linking.openSettings();
-          },
-        }}
-        secondary={{ label: 'Not now', onPress: () => setBgWarning(null) }}
         onDismiss={() => setBgWarning(null)}
       />
       <Popup
