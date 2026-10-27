@@ -134,13 +134,8 @@ export async function requestPermission(): Promise<GeoPermissionStatus> {
     if (fg.status !== 'granted') {
       return fg.canAskAgain ? 'prompt' : 'denied';
     }
-    // Background ("Always") permission is what keeps the drive counting with
-    // the screen off. Not fatal if denied — gaps are reconstructed later.
-    try {
-      await Location.requestBackgroundPermissionsAsync();
-    } catch {
-      // ignore
-    }
+    // Background ("Allow all the time") is requested separately, only after the
+    // in-app explanation on the drive screen (Google Play requirement).
     return 'granted';
   } catch {
     return 'denied';

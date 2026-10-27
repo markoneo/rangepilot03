@@ -15,7 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { keepScreenOn, allowScreenOff } from '@/utils/screenAwake';
-import { ChevronDown, Pause, Play, Flag, Zap, MapPinOff, X, Sparkles, Search, Snowflake } from 'lucide-react-native';
+import { ChevronDown, Pause, Play, Flag, Zap, MapPinOff, MapPin, X, Sparkles, Search, Snowflake } from 'lucide-react-native';
 import { COLD_LIMIT_C, coldNoteSeenToday, markColdNoteSeen } from '@/utils/weather';
 import { ColdChip, COLD_BLUE } from '@/components/ColdChip';
 import { ChargeSheet } from '@/components/ChargeSheet';
@@ -68,7 +68,7 @@ export default function DriveScreen() {
   const [batterySheet, setBatterySheet] = useState(false);
   const [consSheet, setConsSheet] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
-  const [bgWarning, setBgWarning] = useState<'web' | null>(null);
+  const [bgWarning, setBgWarning] = useState<'web' | 'native' | null>(null);
   const [destSheet, setDestSheet] = useState(false);
   const [pendingBattery, setPendingBattery] = useState<number | null>(null);
   const pendingRef = useRef<number | null>(null);
@@ -200,14 +200,10 @@ export default function DriveScreen() {
       setReady(true);
       const bg = await getBackgroundPermissionStatus();
       if (bg === 'denied') {
-        // App (Android/iPhone): no pop-up of our own. Ask once via the phone's
-        // own permission screen for "Allow all the time" so km keep counting
-        // with the screen off.
+        // App (Android/iPhone): explain first (Google Play prominent-disclosure
+        // rule), then open the phone's "Allow all the time" screen. Shown once.
         const asked = await kv.getItem('ev_bg_permission_asked').catch(() => null);
-        if (!asked) {
-          await kv.setItem('ev_bg_permission_asked', '1').catch(() => {});
-          requestBackgroundPermission().catch(() => {});
-        }
+        if (!asked) setBgWarning('native');
       } else if (bg === 'unsupported') {
         // Browser only — the installed app keeps tracking in the background.
         const hidden = await kv.getItem('ev_hide_web_bg_tip').catch(() => null);
@@ -640,6 +636,32 @@ export default function DriveScreen() {
           },
         }}
         onDismiss={() => setBgWarning(null)}
+      />
+      <Popup
+        visible={bgWarning === 'native'}
+        tone={C.green}
+        icon={<MapPin size={26} color={C.green} strokeWidth={2.2} />}
+        title="Keep tracking with the screen off"
+        body="Range Pilot collects location data to measure your distance, speed and range during a drive, even when the app is closed or not in use. Location is only used while a drive is running, and your trips are saved only on your phone. On the next screen, choose “Allow all the time”."
+        primary={{
+          label: 'Continue',
+          onPress: () => {
+            kv.setItem('ev_bg_permission_asked', '1').catch(() => {});
+            setBgWarning(null);
+            requestBackgroundPermission().catch(() => {});
+          },
+        }}
+        secondary={{
+          label: 'Not now',
+          onPress: () => {
+            kv.setItem('ev_bg_permission_asked', '1').catch(() => {});
+            setBgWarning(null);
+          },
+        }}
+        onDismiss={() => {
+          kv.setItem('ev_bg_permission_asked', '1').catch(() => {});
+          setBgWarning(null);
+        }}
       />
       <Popup
         visible={!bgWarning && !(coldOpen && cold) && !!chargePrompt && !chargeSheet}

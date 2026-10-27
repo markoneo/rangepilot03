@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -218,6 +219,10 @@ export default function SettingsScreen() {
         >
           <Text style={styles.saveText}>{saving ? 'Saving…' : isFirstRun ? 'Continue' : 'Save'}</Text>
         </TouchableOpacity>
+
+        <Text style={styles.policy} onPress={() => Linking.openURL('https://rangepilot.net/privacy/')}>
+          Privacy policy
+        </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -246,6 +251,7 @@ const styles = StyleSheet.create({
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   unit: { fontSize: 14, fontFamily: F.semibold, color: C.textDim, marginBottom: 10 },
   help: { fontSize: 12.5, fontFamily: F.regular, color: C.textMute, marginBottom: 12, marginTop: -4, lineHeight: 18 },
+  policy: { color: C.textDim, fontSize: 13.5, fontFamily: F.medium, textAlign: 'center', textDecorationLine: 'underline', marginTop: 18 },
   privacyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10 },
   privacyText: { flex: 1, fontSize: 13.5, fontFamily: F.medium, color: C.text, lineHeight: 19 },
   backupRow: { flexDirection: 'row', gap: 10 },
