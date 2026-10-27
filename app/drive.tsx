@@ -204,7 +204,7 @@ export default function DriveScreen() {
         // rule), then open the phone's "Allow all the time" screen. Shown once.
         const asked = await kv.getItem('ev_bg_permission_asked').catch(() => null);
         if (!asked) setBgWarning('native');
-      } else if (bg === 'unsupported') {
+      } else if (bg === 'unsupported' && Platform.OS === 'web') {
         // Browser only — the installed app keeps tracking in the background.
         const hidden = await kv.getItem('ev_hide_web_bg_tip').catch(() => null);
         if (!hidden) setBgWarning('web');
@@ -622,7 +622,7 @@ export default function DriveScreen() {
       />
       {/* Pop-ups: one at a time — tracking tip first, then the charge question */}
       <Popup
-        visible={bgWarning === 'web'}
+        visible={bgWarning === 'web' && Platform.OS === 'web'}
         tone={C.amber}
         icon={<MapPinOff size={26} color={C.amber} strokeWidth={2.2} />}
         title="Keep this screen open"
