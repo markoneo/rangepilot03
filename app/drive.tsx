@@ -430,8 +430,8 @@ export default function DriveScreen() {
         </View>
         {obdLive ? (
           <Text style={styles.hint}>
-            {kwhLeft.toFixed(1)} kWh usable. Battery % is read from your car, and the app learns your real
-            consumption from it as you drive.
+            {kwhLeft.toFixed(1)} kWh usable. Battery % and consumption come from your car, hills and
+            regeneration included.
           </Text>
         ) : (
           <>
@@ -468,18 +468,33 @@ export default function DriveScreen() {
             onPress={() => setConsSheet(true)}
             activeOpacity={0.7}
           >
-            <Text style={[styles.factValue, { color: bColor }]}>{snap.consumption.toFixed(1)}</Text>
-            <Text style={styles.factLabel} numberOfLines={1}>
-              kWh/100 ·{' '}
-              {snap.learnConfidence === 'none'
-                ? 'preset'
-                : snap.learnConfidence === 'low'
-                  ? 'learning'
-                  : snap.learnConfidence === 'medium'
-                    ? 'learned'
-                    : 'learned ✓'}
+            <Text style={[styles.factValue, { color: bColor }]}>
+              {(obdLive && snap.recentConsumption != null ? snap.recentConsumption : snap.consumption).toFixed(1)}
             </Text>
-            <Text style={styles.factSub}>at ~{snap.speedBasisKmh} km/h</Text>
+            {obdLive ? (
+              <>
+                <Text style={styles.factLabel} numberOfLines={1}>
+                  kWh/100 · {snap.recentConsumption != null ? 'from car' : 'preset'}
+                </Text>
+                <Text style={styles.factSub}>
+                  {snap.recentConsumption != null ? `last ${snap.recentKm} km` : 'measuring…'}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.factLabel} numberOfLines={1}>
+                  kWh/100 ·{' '}
+                  {snap.learnConfidence === 'none'
+                    ? 'preset'
+                    : snap.learnConfidence === 'low'
+                      ? 'learning'
+                      : snap.learnConfidence === 'medium'
+                        ? 'learned'
+                        : 'learned ✓'}
+                </Text>
+                <Text style={styles.factSub}>at ~{snap.speedBasisKmh} km/h</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
 

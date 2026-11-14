@@ -11,6 +11,8 @@ import { AppState as RNAppState, Platform } from 'react-native';
 import {
   applyFix,
   correctBattery,
+  obdBattery,
+  setObdLive as coreSetObdLive,
   fallbackRoadKm,
   finalConsumption,
   newTripState,
@@ -283,6 +285,26 @@ export function setBattery(value: number): Promise<{ learned: number | null }> {
     await persist(true);
     notify();
     return r;
+  });
+}
+
+/** Battery % read from the car (OBD). */
+export function setObdBattery(value: number) {
+  return run(async () => {
+    if (!state) return;
+    obdBattery(state, value, Date.now());
+    await persist(true);
+    notify();
+  });
+}
+
+/** The OBD link came or went: without it the app predicts the battery again. */
+export function setObdLive(live: boolean) {
+  return run(async () => {
+    if (!state?.obd || state.obd.live === live) return;
+    coreSetObdLive(state, live);
+    await persist(true);
+    notify();
   });
 }
 

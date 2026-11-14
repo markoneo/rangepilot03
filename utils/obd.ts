@@ -55,13 +55,15 @@ let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let wanted = false; // the user asked to be connected
 let busy = false;
 let fails = 0;
-let lastFed: number | null = null;
 let idleTicks = 0;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function set(patch: Partial<ObdState>) {
+  const wasLive = state.status === 'connected';
   state = { ...state, ...patch };
+  // lost the adapter mid-drive: the app goes back to predicting the battery
+  if (wasLive && state.status !== 'connected' && Trip.getTrip()) Trip.setObdLive(false).catch(() => {});
   listeners.forEach((l) => l());
 }
 
@@ -182,14 +184,9 @@ async function open(dev: any) {
 
 function gotSoc(soc: number) {
   set({ soc, at: Date.now() });
-  // During a drive the car's value replaces manual corrections. Only real changes
-  // are passed on, so the learning sees clean steps.
-  const trip = Trip.getTrip();
-  if (trip && (lastFed == null || Math.abs(soc - lastFed) >= 0.3)) {
-    lastFed = soc;
-    Trip.setBattery(soc).catch(() => {});
-  }
-  if (!trip) lastFed = null;
+  // During a drive the car's value IS the battery, and every reading is kept so
+  // the consumption can be measured from the car itself.
+  if (Trip.getTrip()) Trip.setObdBattery(soc).catch(() => {});
 }
 
 function schedule() {
