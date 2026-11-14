@@ -123,7 +123,7 @@ export default function ObdScreen() {
       await run('ATS0');
       await run('ATH1');
       await run('ATAT1');
-      await run('ATSP0');
+      await run('ATSP6');
       await run('ATRV');
       setConnected(true);
       log('Connected. Tap “Read car”.');
@@ -137,6 +137,8 @@ export default function ObdScreen() {
   /** Standard OBD-II: supported PIDs, then every supported PID once */
   const readStandard = async () => {
     const found: number[] = [];
+    await run('ATSP6');
+    await run('ATSH7DF');
     for (const base of [0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0]) {
       const a = await run(`01${hex(base)}`, base === 0 ? 12000 : 6000);
       // any ECU's bitmap: "41 XX b1 b2 b3 b4" (spaces off)
@@ -188,7 +190,8 @@ export default function ObdScreen() {
     setEcus(list);
     if (list.length && !scanEcu) setScanEcu(list[0]);
     log(list.length ? `Control units answering: ${list.join(', ')}` : 'No control unit answered the UDS check.');
-    await run('ATSP0');
+    await run('ATSP6');
+    await run('ATSH7DF');
   };
 
   const readCar = async () => {
@@ -248,9 +251,80 @@ export default function ObdScreen() {
       }
       log(`Scan finished: ${hits} identifiers answered. Copy the log and send it to me.`);
       await run('ATFCSM0');
-      await run('ATSP0');
+      await run('ATSH7DF');
     } catch (e: any) {
       log(`Scan stopped: ${e?.message ?? e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Automatic search on every control unit, read-only:
+   * 1) ask what the unit is, 2) sample each block of identifiers to see where
+   * data lives, 3) read the blocks that answered in full.
+   */
+  const scanAll = async () => {
+    setBusy(true);
+    io.current!.stop = false;
+    const stopped = () => !!io.current?.stop;
+    try {
+      await run('ATSP6');
+      await run('ATAT2');
+      await run('ATFCSD300000');
+      for (const ecu of ecus) {
+        if (stopped()) break;
+        const id = ecu.split(':')[1];
+        const tx = hex(parseInt(id, 16) - 8, 3);
+        log(`=== ${id} ===`);
+        await run(`ATSH${tx}`);
+        await run(`ATFCSH${tx}`);
+        await run('ATFCSM1');
+        // what is this unit? (system name, part numbers — not the VIN)
+        for (const did of ['F197', 'F187', 'F18A', 'F193', 'F195']) await run(`22${did}`, 3000);
+
+        // sample every block xx00–xxFF
+        const blocks: number[] = [];
+        const neg: Record<string, number> = {};
+        let silent = 0;
+        for (let hi = 0; hi <= 0xff && !stopped(); hi++) {
+          let hit = false;
+          for (const lo of [0x00, 0x01, 0x02, 0x10]) {
+            const did = hex((hi << 8) | lo, 4);
+            const a = await cmd(`22${did}`, 2000);
+            if (a.includes(`62${did}`)) {
+              hit = true;
+              log(`22${did} → ${a}`);
+            } else {
+              const m = a.match(/7F22([0-9A-F]{2})/);
+              if (m) neg[m[1]] = (neg[m[1]] ?? 0) + 1;
+              else silent++;
+            }
+          }
+          if (hit) blocks.push(hi);
+          if (hi % 64 === 63) log(`… sampled to ${hex(hi)}xx — blocks with data: ${blocks.map((b) => hex(b)).join(' ') || 'none'}`);
+        }
+        log(
+          `${id}: refusals ${Object.entries(neg).map(([k, v]) => `${k}×${v}`).join(' ') || 'none'}, no answer ×${silent}`
+        );
+
+        // read the blocks that answered in full
+        for (const hi of blocks) {
+          if (stopped()) break;
+          log(`— ${id} block ${hex(hi)}00–${hex(hi)}FF —`);
+          for (let lo = 0; lo <= 0xff && !stopped(); lo++) {
+            const did = hex((hi << 8) | lo, 4);
+            const a = await cmd(`22${did}`, 2500);
+            if (a.includes(`62${did}`)) log(`22${did} → ${a}`);
+          }
+        }
+      }
+      log(stopped() ? 'Search stopped.' : 'Search finished. Copy the log and send it to me.');
+      await run('ATFCSM0');
+      await run('ATAT1');
+      await run('ATSH7DF');
+    } catch (e: any) {
+      log(`Search stopped: ${e?.message ?? e}`);
     } finally {
       setBusy(false);
     }
@@ -313,8 +387,26 @@ export default function ObdScreen() {
             </TouchableOpacity>
 
             {connected && ecus.length > 0 && (
+              <>
+                <TouchableOpacity
+                  style={[s.btn, busy && s.off]}
+                  onPress={scanAll}
+                  disabled={busy}
+                  activeOpacity={0.85}
+                >
+                  <Text style={s.btnText}>3 · Search all units (about 10 min)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.copy}
+                  onPress={() => {
+                    if (io.current) io.current.stop = true;
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={s.copyText}>Stop search</Text>
+                </TouchableOpacity>
               <View style={s.scanBox}>
-                <Text style={s.label}>Deep scan (slow, read-only)</Text>
+                <Text style={s.label}>Manual scan of one unit</Text>
                 <View style={s.ecuRow}>
                   {ecus.map((e) => (
                     <TouchableOpacity
@@ -350,6 +442,7 @@ export default function ObdScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
+              </>
             )}
 
             <TouchableOpacity style={s.copy} onPress={copy} activeOpacity={0.85}>
