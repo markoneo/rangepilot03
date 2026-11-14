@@ -10,6 +10,7 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
+import { BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
 import * as SplashScreen from 'expo-splash-screen';
 import { migrateToLocal } from '@/utils/migrateLocal';
 import { resumeTrackingIfNeeded } from '@/utils/tripTracker';
@@ -24,6 +25,8 @@ export default function RootLayout() {
     'Inter-Medium': Inter_500Medium,
     'Inter-SemiBold': Inter_600SemiBold,
     'Inter-Bold': Inter_700Bold,
+    'Bricolage-Bold': BricolageGrotesque_700Bold,
+    'Bricolage-ExtraBold': BricolageGrotesque_800ExtraBold,
   });
 
   // One-time move of old account data to the device (max ~6 s, never blocks for long).
@@ -92,7 +95,7 @@ export default function RootLayout() {
     );
     ensure('link[rel="manifest"]', () => link('manifest', '/manifest.webmanifest'));
 
-    ensure('meta[name="theme-color"]', () => meta('theme-color', '#0B0F14'));
+    ensure('meta[name="theme-color"]', () => meta('theme-color', '#0B0E11'));
     ensure('meta[name="apple-mobile-web-app-capable"]', () =>
       meta('apple-mobile-web-app-capable', 'yes'),
     );
@@ -116,7 +119,7 @@ export default function RootLayout() {
 
   return (
     <>
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0B0F14' } }}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0B0E11' } }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="drive-permission" />

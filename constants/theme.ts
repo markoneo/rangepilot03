@@ -1,16 +1,19 @@
 export const C = {
-  bg: '#0B0F14',
-  card: '#121821',
-  cardHi: '#18202B',
-  border: '#1F2937',
-  borderHi: '#2B3646',
-  text: '#F3F6FA',
-  textDim: '#9AA4B2',
-  textMute: '#5F6B7A',
-  blue: '#3B82F6',
-  blueDim: '#14233D',
-  green: '#22C55E',
-  greenDim: '#0E2A1A',
+  bg: '#0B0E11',
+  card: '#12161B',
+  cardHi: '#1B2229',
+  border: '#1B2229',
+  borderHi: '#2A323A',
+  text: '#F2F5F7',
+  textDim: '#8B95A1',
+  textMute: '#5C6670',
+  // The single accent. Still called "blue" across the app; it is green now.
+  blue: '#34D17A',
+  blueDim: '#12261B',
+  /** Text and icons on top of the accent colour */
+  onAccent: '#06130C',
+  green: '#34D17A',
+  greenDim: '#0F1F17',
   amber: '#F59E0B',
   amberDim: '#2E2108',
   orange: '#F97316',
@@ -24,6 +27,9 @@ export const F = {
   medium: 'Inter-Medium',
   semibold: 'Inter-SemiBold',
   bold: 'Inter-Bold',
+  /** Big numbers and screen titles */
+  display: 'Bricolage-ExtraBold',
+  displayBold: 'Bricolage-Bold',
 };
 
 export function batteryColor(pct: number): string {

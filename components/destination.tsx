@@ -199,7 +199,7 @@ export function ArrivalCard({
   const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} h ${Math.round(m % 60)} min` : `${Math.round(m)} min`);
 
   return (
-    <View style={[s.card, { backgroundColor: bg, borderColor: col + '55' }]}>
+    <View style={[s.card, { backgroundColor: bg }]}>
       <View style={s.cardHead}>
         <MapPin size={16} color={col} />
         <TouchableOpacity style={{ flex: 1 }} onPress={onChange} disabled={!onChange} activeOpacity={0.7}>
@@ -227,7 +227,7 @@ export function ArrivalCard({
       ) : (
         <>
           <View style={s.verdict}>
-            <Icon size={22} color={col} />
+            <Icon size={16} color={col} />
             <Text style={[s.verdictText, { color: col }]}>{headline}</Text>
           </View>
           <Text style={s.arrival}>
@@ -284,9 +284,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     backgroundColor: C.card,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: C.blue,
+    borderRadius: 16,
     paddingHorizontal: 14,
     height: 54,
     marginBottom: 8,
@@ -313,16 +311,16 @@ const s = StyleSheet.create({
   rowSub: { fontSize: 12.5, fontFamily: F.regular, color: C.textDim, marginTop: 2 },
   empty: { color: C.textDim, fontFamily: F.medium, textAlign: 'center', marginTop: 30 },
   attrib: { color: C.textMute, fontFamily: F.regular, fontSize: 11, textAlign: 'right', marginTop: 14 },
-  card: { borderRadius: 20, borderWidth: 1, padding: 16, marginBottom: 12 },
+  card: { borderRadius: 20, padding: 16, marginBottom: 12 },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   placeName: { fontSize: 15, fontFamily: F.semibold, color: C.text },
   placeAddr: { fontSize: 12, fontFamily: F.regular, color: C.textDim, marginTop: 1 },
   loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16 },
   loadingText: { color: C.textDim, fontFamily: F.medium, fontSize: 13 },
   verdict: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
-  verdictText: { fontSize: 16, fontFamily: F.bold },
-  arrival: { fontSize: 22, fontFamily: F.semibold, color: C.text, marginTop: 6 },
-  arrivalPct: { fontSize: 34, fontFamily: F.bold },
+  verdictText: { fontSize: 14, fontFamily: F.bold },
+  arrival: { fontSize: 15, fontFamily: F.semibold, color: C.textDim, marginTop: 6 },
+  arrivalPct: { fontSize: 40, fontFamily: F.display, letterSpacing: -1.4 },
   arrivalSub: { fontSize: 12.5, fontFamily: F.medium, color: C.textDim, marginTop: 2 },
   facts: { marginTop: 12, gap: 6 },
   fact: { flexDirection: 'row', alignItems: 'center', gap: 8 },

@@ -271,5 +271,5 @@ const styles = StyleSheet.create({
   backupMsg: { fontSize: 13, fontFamily: F.medium, color: C.green, marginTop: 10 },
   error: { color: C.red, fontFamily: F.medium, fontSize: 13, textAlign: 'center', marginBottom: 10 },
   save: { backgroundColor: C.blue, borderRadius: 16, paddingVertical: 17, alignItems: 'center', marginTop: 4 },
-  saveText: { fontSize: 17, fontFamily: F.semibold, color: '#fff' },
+  saveText: { fontSize: 17, fontFamily: F.semibold, color: C.onAccent },
 });

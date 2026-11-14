@@ -377,77 +377,99 @@ export default function DriveScreen() {
         showsVerticalScrollIndicator={false}
       >
 
-        {/* HERO: range */}
-        <View style={styles.hero}>
-          <View style={styles.heroRow}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.heroTop}>
-                <Zap size={14} color={C.blue} fill={C.blue} />
-                <Text style={styles.heroLabel}>
-                  {snap.reservePercent > 0 ? `Range to ${snap.reservePercent}%` : 'Range left'}
-                </Text>
-              </View>
-              <Text style={[styles.heroValue, { color: snap.usableBattery <= 0 ? C.red : C.text }]}>
-                {Math.round(snap.rangeKm)}
-                <Text style={styles.heroUnit}> km</Text>
-              </Text>
-            </View>
-            {/* Consumption — follows the battery colour, learns from battery corrections */}
-            <View style={{ alignItems: 'stretch' }}>
-            <TouchableOpacity
-              style={[styles.consBox, { borderColor: bColor + '55', backgroundColor: bColor + '14' }]}
-              onPress={() => setConsSheet(true)}
-              activeOpacity={0.75}
-            >
-              <Text style={[styles.consValue, { color: bColor }]}>{snap.consumption.toFixed(1)}</Text>
-              <Text style={styles.consUnit}>kWh/100</Text>
-              <Text style={styles.consSpeed}>at ~{snap.speedBasisKmh} km/h</Text>
-              <View style={styles.consLearned}>
-                {snap.learnConfidence !== 'none' && <Sparkles size={10} color={bColor} />}
-                <Text style={[styles.consLearnedText, { color: snap.learnConfidence === 'none' ? C.textMute : bColor }]}>
-                  {snap.learnConfidence === 'none'
-                    ? 'preset'
-                    : snap.learnConfidence === 'low'
-                      ? 'learning'
-                      : snap.learnConfidence === 'medium'
-                        ? 'learned'
-                        : 'learned ✓'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-            {/* km per 10 % — quick mental range check */}
-            <View style={styles.per10Pill}>
-              <Text style={styles.per10PillValue}>
-                10% = {kmPer10.toFixed(0)}
-                <Text style={styles.per10PillUnit}> km</Text>
-              </Text>
-              <Text style={styles.per10PillSub}>1% = {(kmPer10 / 10).toFixed(1)} km</Text>
-            </View>
-            </View>
+        {/* Range */}
+        <View style={styles.heroTop}>
+          <Text style={styles.heroLabel}>
+            {snap.reservePercent > 0 ? `Range to ${snap.reservePercent}%` : 'Range left'}
+          </Text>
+          {cold && <ColdChip tempC={snap.outsideTempC!} onPress={() => setColdOpen(true)} />}
+        </View>
+        <Text style={[styles.heroValue, { color: snap.usableBattery <= 0 ? C.red : C.text }]}>
+          {Math.round(snap.rangeKm)}
+          <Text style={styles.heroUnit}> km</Text>
+        </Text>
+
+        {/* Battery — match your car */}
+        <View style={{ marginTop: 14 }}>
+          <Stepper
+            value={`${shownBattery.toFixed(1)}%`}
+            color={batteryColor(shownBattery)}
+            onMinus={() => stepBattery(-1)}
+            onPlus={() => stepBattery(1)}
+            onMinusLong={() => stepBattery(-5)}
+            onPlusLong={() => stepBattery(5)}
+            onPressValue={() => setBatterySheet(true)}
+          />
+        </View>
+        <View style={styles.battTrack}>
+          <View
+            style={[
+              styles.battFill,
+              { width: `${Math.max(0, Math.min(100, snap.battery))}%`, backgroundColor: bColor },
+            ]}
+          />
+          {snap.reservePercent > 0 && (
+            <View style={[styles.reserveMark, { left: `${snap.reservePercent}%` }]} />
+          )}
+        </View>
+        <Text style={styles.hint}>
+          Match your car · {kwhLeft.toFixed(1)} kWh usable. Correct it whenever your car shows a different %;
+          after 5 km the app learns your real consumption from it.
+        </Text>
+
+        {/* Quick facts: km per battery %, consumption */}
+        <View style={styles.facts}>
+          <View style={styles.fact}>
+            <Text style={styles.factValue}>{kmPer10.toFixed(0)} km</Text>
+            <Text style={styles.factLabel}>per 10% battery</Text>
           </View>
-          <View style={styles.battTrack}>
-            <View
-              style={[
-                styles.battFill,
-                { width: `${Math.max(0, Math.min(100, snap.battery))}%`, backgroundColor: bColor },
-              ]}
-            />
-            {snap.reservePercent > 0 && (
-              <View style={[styles.reserveMark, { left: `${snap.reservePercent}%` }]} />
-            )}
+          <View style={[styles.fact, styles.factDivider]}>
+            <Text style={styles.factValue}>{(kmPer10 / 10).toFixed(1)} km</Text>
+            <Text style={styles.factLabel}>per 1%</Text>
           </View>
-          <View style={styles.heroMeta}>
-            <Text style={[styles.heroMetaStrong, { color: bColor }]}>{snap.battery.toFixed(1)}%</Text>
-            <Text style={styles.heroMetaText}>
-              {kwhLeft.toFixed(1)} kWh usable
+          <TouchableOpacity
+            style={[styles.fact, styles.factDivider]}
+            onPress={() => setConsSheet(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.factValue, { color: bColor }]}>{snap.consumption.toFixed(1)}</Text>
+            <Text style={styles.factLabel} numberOfLines={1}>
+              kWh/100 ·{' '}
+              {snap.learnConfidence === 'none'
+                ? 'preset'
+                : snap.learnConfidence === 'low'
+                  ? 'learning'
+                  : snap.learnConfidence === 'medium'
+                    ? 'learned'
+                    : 'learned ✓'}
             </Text>
-            {cold && (
-              <View style={{ marginLeft: 'auto', alignSelf: 'center' }}>
-                <ColdChip tempC={snap.outsideTempC!} onPress={() => setColdOpen(true)} />
-              </View>
-            )}
+            <Text style={styles.factSub}>at ~{snap.speedBasisKmh} km/h</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Live stats */}
+        <View style={[styles.facts, { borderTopWidth: 0, marginTop: 0, marginBottom: 14 }]}>
+          <View style={styles.fact}>
+            <Text style={styles.factValue}>{snap.distanceKm.toFixed(1)}</Text>
+            <Text style={styles.factLabel}>km driven</Text>
+          </View>
+          <View style={[styles.fact, styles.factDivider]}>
+            <Text style={styles.factValue}>{formatDuration(snap.elapsedSec)}</Text>
+            <Text style={styles.factLabel}>time</Text>
+          </View>
+          <View style={[styles.fact, styles.factDivider]}>
+            <Text style={[styles.factValue, { color: paused ? C.text : speedColor(snap.speedKmh) }]}>
+              {paused ? '–' : String(Math.round(snap.speedKmh))}
+            </Text>
+            <Text style={styles.factLabel}>km/h</Text>
           </View>
         </View>
+        {snap.estimatedKm >= 0.1 && (
+          <Text style={styles.estNote}>
+            {snap.estimatedKm.toFixed(1)} km reconstructed across {snap.gpsGaps} GPS{' '}
+            {snap.gpsGaps === 1 ? 'gap' : 'gaps'} (tunnels / background)
+          </Text>
+        )}
 
         {/* Can I make it? */}
         {trip.destination ? (
@@ -489,50 +511,17 @@ export default function DriveScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Live stats */}
-        <View style={styles.statsRow}>
-          <Stat value={snap.distanceKm.toFixed(1)} label="km driven" />
-          <Stat value={formatDuration(snap.elapsedSec)} label="time" />
-          <Stat
-            value={paused ? '–' : String(Math.round(snap.speedKmh))}
-            label="km/h"
-            color={paused ? C.text : speedColor(snap.speedKmh)}
-          />
-        </View>
-        {snap.estimatedKm >= 0.1 && (
-          <Text style={styles.estNote}>
-            {snap.estimatedKm.toFixed(1)} km reconstructed across {snap.gpsGaps} GPS{' '}
-            {snap.gpsGaps === 1 ? 'gap' : 'gaps'} (tunnels / background)
-          </Text>
-        )}
-
-        {/* Battery */}
-        <Card style={{ marginTop: 6 }}>
-          <Label>Battery — match your car</Label>
-          <Stepper
-            value={`${shownBattery.toFixed(1)}%`}
-            color={batteryColor(shownBattery)}
-            onMinus={() => stepBattery(-1)}
-            onPlus={() => stepBattery(1)}
-            onMinusLong={() => stepBattery(-5)}
-            onPlusLong={() => stepBattery(5)}
-            onPressValue={() => setBatterySheet(true)}
-          />
-          <Text style={styles.hint}>
-            Correct it whenever your car shows a different %. After 5 km the app learns your real
-            consumption from it.
-          </Text>
-        </Card>
-
         {/* Reserve */}
-        <Card>
-          <Label>Arrive with at least</Label>
-          <Chips
-            options={RESERVE_OPTIONS.map((v) => ({ label: v === 0 ? 'Off' : `${v}%`, value: v }))}
-            value={RESERVE_OPTIONS.includes(snap.reservePercent) ? snap.reservePercent : null}
-            onChange={(v) => Trip.setReserve(v)}
-          />
-        </Card>
+        <View style={styles.reserveRow}>
+          <Text style={styles.reserveLabel}>Arrive with at least</Text>
+          <View>
+            <Chips
+              options={RESERVE_OPTIONS.map((v) => ({ label: v === 0 ? 'Off' : `${v}%`, value: v }))}
+              value={RESERVE_OPTIONS.includes(snap.reservePercent) ? snap.reservePercent : null}
+              onChange={(v) => Trip.setReserve(v)}
+            />
+          </View>
+        </View>
       </ScrollView>
 
       {/* Bottom controls */}
@@ -546,7 +535,7 @@ export default function DriveScreen() {
             }}
             activeOpacity={0.85}
           >
-            <Play size={20} color="#fff" fill="#fff" />
+            <Play size={20} color={C.onAccent} fill={C.onAccent} />
             <Text style={styles.ctrlTextLight}>Resume</Text>
           </TouchableOpacity>
         ) : (
@@ -788,15 +777,19 @@ function FinishSheet({
   const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v * 10) / 10));
   return (
     <>
-      <Modal visible={visible && !typing} transparent animationType="fade" onRequestClose={onClose}>
+      <Modal visible={visible && !typing} transparent animationType="slide" onRequestClose={onClose}>
         <Pressable style={styles.overlay} onPress={onClose}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.sheetTitle}>Finish drive</Text>
-            <Text style={styles.sheetSub}>
-              {snap.distanceKm.toFixed(1)} km · {formatDuration(snap.elapsedSec)}
-            </Text>
+            <View style={styles.grab} />
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>Finish drive</Text>
+              <Text style={styles.sheetSub}>
+                {snap.distanceKm.toFixed(1)} km · {formatDuration(snap.elapsedSec)}
+              </Text>
+            </View>
             <Text style={styles.sheetLabel}>Battery your car shows now</Text>
             <Stepper
+              size="lg"
               value={`${battery.toFixed(1)}%`}
               color={batteryColor(battery)}
               onMinus={() => setBattery((b) => clamp(b - 1))}
@@ -857,7 +850,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 17, fontFamily: F.bold, color: C.text, letterSpacing: -0.3 },
+  headerTitle: { fontSize: 19, fontFamily: F.displayBold, color: C.text, letterSpacing: -0.3 },
   headerSub: { fontSize: 12, fontFamily: F.regular, color: C.textDim, marginTop: 1 },
   gpsPill: {
     flexDirection: 'row',
@@ -870,7 +863,7 @@ const styles = StyleSheet.create({
   },
   gpsDot: { width: 7, height: 7, borderRadius: 4 },
   gpsText: { fontSize: 12, fontFamily: F.semibold },
-  scroll: { paddingHorizontal: 16, paddingTop: 8 },
+  scroll: { paddingHorizontal: 22, paddingTop: 10 },
   warn: {
     flexDirection: 'row',
     gap: 10,
@@ -893,7 +886,7 @@ const styles = StyleSheet.create({
     borderColor: C.border,
     marginBottom: 12,
   },
-  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  heroTop: { flexDirection: 'row', alignItems: 'center' },
   heroRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   consBox: {
     alignItems: 'center',
@@ -948,13 +941,13 @@ const styles = StyleSheet.create({
   usualBody: { color: C.textDim, fontFamily: F.regular, fontSize: 12.5, marginTop: 3 },
   usualActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 10 },
   usualUse: { backgroundColor: C.blue, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14 },
-  usualUseText: { color: '#fff', fontFamily: F.semibold, fontSize: 13.5 },
+  usualUseText: { color: C.onAccent, fontFamily: F.semibold, fontSize: 13.5 },
   usualSkip: { color: C.textDim, fontFamily: F.medium, fontSize: 13.5 },
   cold: {
     flexDirection: 'row',
     gap: 10,
     alignItems: 'flex-start',
-    backgroundColor: '#0C2233',
+    backgroundColor: '#0F1A22',
     borderColor: '#7DD3FC44',
     borderWidth: 1,
     borderRadius: 16,
@@ -969,20 +962,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: F.semibold,
     color: C.textDim,
-    letterSpacing: 0.8,
+    letterSpacing: 1,
     textTransform: 'uppercase',
   },
-  heroValue: { fontSize: 84, fontFamily: F.bold, letterSpacing: -4, lineHeight: 92, marginTop: 4 },
-  heroUnit: { fontSize: 28, color: C.blue, letterSpacing: -0.5 },
+  heroValue: { fontSize: 92, fontFamily: F.display, letterSpacing: -4.5, lineHeight: 92, marginTop: 6 },
+  heroUnit: { fontSize: 26, fontFamily: F.displayBold, color: C.textDim, letterSpacing: -0.5 },
+  facts: { flexDirection: 'row', borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.border, marginTop: 14 },
+  fact: { flex: 1, paddingVertical: 12 },
+  factDivider: { borderLeftWidth: 1, borderLeftColor: C.border, paddingLeft: 14 },
+  factValue: { fontSize: 20, fontFamily: F.displayBold, color: C.text, letterSpacing: -0.5 },
+  factLabel: { fontSize: 12, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
+  factSub: { fontSize: 10.5, fontFamily: F.medium, color: C.textMute, marginTop: 1 },
+  reserveRow: { gap: 10, marginTop: 6 },
+  reserveLabel: { fontSize: 12, fontFamily: F.semibold, color: C.textDim, letterSpacing: 1, textTransform: 'uppercase' },
   battTrack: {
-    height: 10,
-    borderRadius: 5,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: C.border,
     overflow: 'hidden',
-    marginTop: 10,
+    marginTop: 12,
   },
   battFill: { height: '100%', borderRadius: 5 },
-  reserveMark: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: C.text },
+  reserveMark: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: C.bg },
   heroMeta: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 10, flexWrap: 'wrap' },
   heroMetaStrong: { fontSize: 18, fontFamily: F.bold },
   heroMetaText: { fontSize: 13, fontFamily: F.medium, color: C.textDim },
@@ -992,14 +993,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: C.blue + '88',
-    paddingVertical: 15,
+    borderRadius: 18,
+    backgroundColor: C.card,
+    paddingVertical: 16,
     marginBottom: 12,
   },
-  destBtnText: { fontSize: 15, fontFamily: F.semibold, color: C.blue },
+  destBtnText: { fontSize: 15, fontFamily: F.semibold, color: C.text },
   per10: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1012,7 +1011,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   per10Right: { alignItems: 'flex-end', borderLeftWidth: 1, borderLeftColor: C.blue + '40', paddingLeft: 16 },
-  per10Label: { fontSize: 12, fontFamily: F.semibold, color: '#93C5FD', letterSpacing: 0.4 },
+  per10Label: { fontSize: 12, fontFamily: F.semibold, color: '#8B95A1', letterSpacing: 0.4 },
   per10Value: { fontSize: 40, fontFamily: F.bold, color: C.text, letterSpacing: -1.5, lineHeight: 46 },
   per10Next: { fontSize: 28, fontFamily: F.bold, color: C.text, letterSpacing: -1, lineHeight: 34 },
   per10Unit: { fontSize: 16, color: C.blue, letterSpacing: 0 },
@@ -1038,7 +1037,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 6,
   },
-  hint: { fontSize: 12, fontFamily: F.regular, color: C.textMute, marginTop: 12, lineHeight: 17 },
+  hint: { fontSize: 12, fontFamily: F.regular, color: C.textMute, marginTop: 8, lineHeight: 17, textAlign: 'center' },
   learnedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1048,7 +1047,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 10,
   },
-  learnedText: { fontSize: 11, fontFamily: F.semibold, color: '#93C5FD' },
+  learnedText: { fontSize: 11, fontFamily: F.semibold, color: '#8B95A1' },
   bottom: {
     position: 'absolute',
     left: 0,
@@ -1056,11 +1055,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     flexDirection: 'row',
     gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingHorizontal: 22,
+    paddingTop: 10,
     backgroundColor: C.bg,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
   },
   ctrl: {
     flex: 1,
@@ -1068,53 +1065,55 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    borderRadius: 16,
-    paddingVertical: 17,
+    borderRadius: 18,
+    height: 58,
   },
-  pause: { backgroundColor: C.cardHi, borderWidth: 1, borderColor: C.borderHi },
+  pause: { backgroundColor: C.cardHi },
   resume: { backgroundColor: C.blue },
-  finish: { backgroundColor: C.redDim, borderWidth: 1, borderColor: C.red + '55' },
+  finish: { backgroundColor: C.redDim },
   ctrlText: { fontSize: 16, fontFamily: F.semibold, color: C.text },
-  ctrlTextLight: { fontSize: 16, fontFamily: F.semibold, color: '#fff' },
+  ctrlTextLight: { fontSize: 16, fontFamily: F.bold, color: C.onAccent },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    padding: 20,
   },
   sheet: {
     width: '100%',
-    maxWidth: 380,
+    maxWidth: 520,
     backgroundColor: C.card,
-    borderRadius: 24,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: C.borderHi,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 22,
+    paddingTop: 10,
+    paddingBottom: 28,
   },
-  sheetTitle: { fontSize: 20, fontFamily: F.bold, color: C.text, textAlign: 'center' },
-  sheetSub: { fontSize: 14, fontFamily: F.medium, color: C.textDim, textAlign: 'center', marginTop: 4 },
+  grab: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.borderHi, alignSelf: 'center', marginBottom: 18 },
+  sheetHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  sheetTitle: { fontSize: 26, fontFamily: F.display, color: C.text, letterSpacing: -0.8 },
+  sheetSub: { fontSize: 14, fontFamily: F.medium, color: C.textDim },
   sheetLabel: {
     fontSize: 12,
     fontFamily: F.semibold,
     color: C.textDim,
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    textAlign: 'center',
-    marginTop: 20,
+    letterSpacing: 1,
+    marginTop: 22,
     marginBottom: 12,
   },
   sheetHint: { fontSize: 12, fontFamily: F.regular, color: C.textMute, textAlign: 'center', marginTop: 10 },
   saveBtn: {
     backgroundColor: C.blue,
-    borderRadius: 14,
-    paddingVertical: 16,
+    borderRadius: 18,
+    height: 58,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 18,
   },
-  saveText: { fontSize: 16, fontFamily: F.semibold, color: '#fff' },
-  cancelBtn: { paddingVertical: 13, alignItems: 'center' },
-  cancelText: { fontSize: 15, fontFamily: F.medium, color: C.text },
-  discardBtn: { paddingVertical: 8, alignItems: 'center' },
-  discardText: { fontSize: 13, fontFamily: F.medium, color: C.textMute },
+  saveText: { fontSize: 17, fontFamily: F.bold, color: C.onAccent },
+  cancelBtn: { height: 54, borderRadius: 18, backgroundColor: C.cardHi, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  cancelText: { fontSize: 16, fontFamily: F.semibold, color: C.text },
+  discardBtn: { paddingVertical: 12, alignItems: 'center', marginTop: 6 },
+  discardText: { fontSize: 14, fontFamily: F.semibold, color: C.textDim },
 });

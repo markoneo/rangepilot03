@@ -130,29 +130,29 @@ export default function TripHistoryScreen() {
           <Text style={[styles.titleText, !hasTitle && styles.titlePlaceholder]} numberOfLines={1}>
             {hasTitle ? item.title : 'Add title'}
           </Text>
-          <Pencil size={18} color="#6B7280" strokeWidth={2} />
+          <Pencil size={18} color="#5C6670" strokeWidth={2} />
         </TouchableOpacity>
 
         <View style={styles.tripDistRow}>
-          <Navigation size={14} color="#3B82F6" strokeWidth={2} />
+          <Navigation size={14} color="#34D17A" strokeWidth={2} />
           <Text style={styles.tripDistValue}>{item.distanceKm.toFixed(1)} km</Text>
         </View>
 
         <View style={styles.tripMetaRow}>
           <TripMeta
-            icon={<Clock size={13} color="#6B7280" strokeWidth={2} />}
+            icon={<Clock size={13} color="#5C6670" strokeWidth={2} />}
             value={formatDuration(item.durationSeconds)}
           />
           <TripMeta
-            icon={<Battery size={13} color="#6B7280" strokeWidth={2} />}
+            icon={<Battery size={13} color="#5C6670" strokeWidth={2} />}
             value={`${item.startBattery}% → ${item.endBattery.toFixed(0)}%`}
           />
           <TripMeta
-            icon={<Zap size={13} color="#6B7280" strokeWidth={2} />}
+            icon={<Zap size={13} color="#5C6670" strokeWidth={2} />}
             value={`${energyUsed} kWh`}
           />
           <TripMeta
-            icon={<Zap size={13} color={isReal ? '#F59E0B' : '#6B7280'} strokeWidth={2} />}
+            icon={<Zap size={13} color={isReal ? '#F59E0B' : '#5C6670'} strokeWidth={2} />}
             value={`${cons.toFixed(1)} kWh/100`}
             accent={isReal}
           />
@@ -165,7 +165,7 @@ export default function TripHistoryScreen() {
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
-          <ArrowLeft size={20} color="#9CA3AF" strokeWidth={2} />
+          <ArrowLeft size={20} color="#8B95A1" strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.title}>Trips</Text>
         <TouchableOpacity
@@ -173,14 +173,14 @@ export default function TripHistoryScreen() {
           onPress={() => router.push('/analytics')}
           activeOpacity={0.7}
         >
-          <LineChart size={20} color="#3B82F6" strokeWidth={2} />
+          <LineChart size={20} color="#34D17A" strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
       {trips.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIcon}>
-            <Navigation size={32} color="#374151" strokeWidth={1.5} />
+            <Navigation size={32} color="#2A323A" strokeWidth={1.5} />
           </View>
           <Text style={styles.emptyTitle}>No trips yet</Text>
           <Text style={styles.emptyBody}>Complete your first drive to see it here.</Text>
@@ -225,7 +225,7 @@ export default function TripHistoryScreen() {
               value={titleDraft}
               onChangeText={setTitleDraft}
               placeholder="e.g. Morning commute"
-              placeholderTextColor="#4B5563"
+              placeholderTextColor="#5C6670"
               style={styles.modalInput}
               autoFocus
               maxLength={60}
@@ -273,7 +273,7 @@ function TripMeta({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#0B0F14',
+    backgroundColor: '#0B0E11',
   },
   header: {
     flexDirection: 'row',
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#1F2937',
+    borderBottomColor: '#1B2229',
   },
   backBtn: {
     width: 40,
@@ -293,7 +293,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontFamily: 'Inter-Bold',
-    color: '#22C55E',
+    color: '#34D17A',
     letterSpacing: -0.2,
   },
   list: {
@@ -301,17 +301,17 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   hint: {
-    color: '#9CA3AF',
+    color: '#8B95A1',
     fontSize: 15,
     textAlign: 'center',
     marginBottom: 8,
   },
   tripCard: {
-    backgroundColor: '#111827',
+    backgroundColor: '#12161B',
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: '#1B2229',
     gap: 12,
   },
   tripTopRow: {
@@ -326,13 +326,13 @@ const styles = StyleSheet.create({
   tripDate: {
     fontSize: 12,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: '#5C6670',
     marginBottom: 2,
   },
   tripCar: {
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
-    color: '#9CA3AF',
+    color: '#8B95A1',
   },
   iconBtn: {
     width: 32,
@@ -345,9 +345,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#0B0F14',
+    backgroundColor: '#0B0E11',
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: '#1B2229',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -356,10 +356,10 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
-    color: '#F9FAFB',
+    color: '#F2F5F7',
   },
   titlePlaceholder: {
-    color: '#4B5563',
+    color: '#5C6670',
     fontFamily: 'Inter-Regular',
   },
   tripDistRow: {
@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
   tripDistValue: {
     fontSize: 28,
     fontFamily: 'Inter-Bold',
-    color: '#F9FAFB',
+    color: '#F2F5F7',
     letterSpacing: -0.8,
   },
   tripMetaRow: {
@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#1F2937',
+    backgroundColor: '#1B2229',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
   metaValue: {
     fontSize: 12,
     fontFamily: 'Inter-Medium',
-    color: '#9CA3AF',
+    color: '#8B95A1',
   },
   metaValueAccent: {
     color: '#F59E0B',
@@ -406,28 +406,28 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#111827',
+    backgroundColor: '#12161B',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: '#1B2229',
   },
   emptyTitle: {
     fontSize: 20,
     fontFamily: 'Inter-Bold',
-    color: '#F9FAFB',
+    color: '#F2F5F7',
     letterSpacing: -0.3,
   },
   emptyBody: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: '#5C6670',
     textAlign: 'center',
     lineHeight: 22,
   },
   emptyBtn: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#34D17A',
     borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 28,
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
   emptyBtnText: {
     fontSize: 15,
     fontFamily: 'Inter-SemiBold',
-    color: '#FFFFFF',
+    color: '#06130C',
   },
   modalBackdrop: {
     flex: 1,
@@ -451,28 +451,28 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '100%',
     maxWidth: 400,
-    backgroundColor: '#111827',
+    backgroundColor: '#12161B',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: '#1B2229',
     padding: 20,
     gap: 14,
   },
   modalTitle: {
     fontSize: 16,
     fontFamily: 'Inter-Bold',
-    color: '#F9FAFB',
+    color: '#F2F5F7',
   },
   modalInput: {
-    backgroundColor: '#0B0F14',
+    backgroundColor: '#0B0E11',
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: '#1B2229',
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
     fontFamily: 'Inter-Regular',
-    color: '#F9FAFB',
+    color: '#F2F5F7',
   },
   modalActions: {
     flexDirection: 'row',
@@ -490,14 +490,14 @@ const styles = StyleSheet.create({
   modalBtnGhostText: {
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
-    color: '#9CA3AF',
+    color: '#8B95A1',
   },
   modalBtnPrimary: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#34D17A',
   },
   modalBtnPrimaryText: {
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
-    color: '#FFFFFF',
+    color: '#06130C',
   },
 });
