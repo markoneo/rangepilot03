@@ -177,7 +177,7 @@ export default function ObdScreen() {
     ] as const) {
       await run(`ATSP${proto}`);
       await run(`ATSH${header}`);
-      for (const req of ['3E00', '1001']) {
+      for (const req of ['3E00']) {
         const a = await run(req, 8000);
         for (const part of a.split('|')) {
           const t = part.trim();
@@ -358,7 +358,7 @@ export default function ObdScreen() {
         ) : (
           <>
             <Text style={s.body}>
-              Read-only test. Car switched on, parked, adapter plugged in. Close any other OBD app first — the adapter
+              Read-only test: battery % only. The deeper scans are switched off. Unplug the adapter before charging. Car switched on, parked, adapter plugged in. Close any other OBD app first — the adapter
               talks to one app at a time.
             </Text>
 
@@ -386,7 +386,7 @@ export default function ObdScreen() {
               <Text style={s.btnText}>{busy && connected ? 'Working…' : '2 · Read car'}</Text>
             </TouchableOpacity>
 
-            {connected && ecus.length > 0 && (
+            {false && connected && ecus.length > 0 && (
               <>
                 <TouchableOpacity
                   style={[s.btn, busy && s.off]}
