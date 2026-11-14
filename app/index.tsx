@@ -324,24 +324,44 @@ export default function HomeScreen() {
           </View>
         )}
 
-        <View style={styles.battRow}>
-          <TouchableOpacity
-            onPress={() => setBattSheet(true)}
-            disabled={obdLive}
-            activeOpacity={0.7}
-            hitSlop={8}
-          >
-            <Text style={[styles.battValue, { color: bColor }]}>{obdLive ? battery.toFixed(1) : battery}%</Text>
-          </TouchableOpacity>
-          {obdLive ? (
+        {obdLive ? (
+          <View style={styles.battRow}>
+            <Text style={[styles.battValue, { color: bColor }]}>{battery.toFixed(1)}%</Text>
             <View style={styles.liveRow}>
               <View style={styles.liveDot} />
               <Text style={styles.battSub}>{usable.toFixed(1)} kWh · live from your car</Text>
             </View>
-          ) : (
-            <Text style={styles.battSub}>{usable.toFixed(1)} kWh · drag to match your car</Text>
-          )}
-        </View>
+          </View>
+        ) : (
+          <>
+            <View style={styles.battStep}>
+              <TouchableOpacity
+                style={styles.roundBtn}
+                onPress={() => setBattery((b) => Math.max(1, Math.round(b) - 1))}
+                onLongPress={() => setBattery((b) => Math.max(1, Math.round(b) - 5))}
+                delayLongPress={350}
+                activeOpacity={0.7}
+                accessibilityLabel="Battery down"
+              >
+                <Minus size={20} color={C.text} strokeWidth={2.5} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setBattSheet(true)} activeOpacity={0.7} style={{ alignItems: 'center' }}>
+                <Text style={[styles.battValue, { color: bColor }]}>{Math.round(battery)}%</Text>
+                <Text style={styles.battSub}>{usable.toFixed(1)} kWh · match your car</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.roundBtn}
+                onPress={() => setBattery((b) => Math.min(100, Math.round(b) + 1))}
+                onLongPress={() => setBattery((b) => Math.min(100, Math.round(b) + 5))}
+                delayLongPress={350}
+                activeOpacity={0.7}
+                accessibilityLabel="Battery up"
+              >
+                <Plus size={20} color={C.text} strokeWidth={2.5} />
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
         {obdLive ? (
           <View style={styles.liveTrack}>
             <View style={[styles.liveFill, { width: `${battery}%`, backgroundColor: bColor }]} />
@@ -396,34 +416,12 @@ export default function HomeScreen() {
         {/* Consumption */}
         <View style={styles.consHead}>
           <Text style={styles.sectionLabel}>Consumption</Text>
-          <View style={styles.consStep}>
-            <TouchableOpacity
-              style={[styles.roundBtn, (obdLive || obdEnabled) && { display: 'none' }]}
-              onPress={() => changeCons(consumption - 0.5)}
-              onLongPress={() => changeCons(consumption - 2)}
-              delayLongPress={350}
-              activeOpacity={0.7}
-              accessibilityLabel="Decrease"
-            >
-              <Minus size={18} color={C.text} strokeWidth={2.5} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setConsSheet(true)} activeOpacity={0.7} hitSlop={6}>
-              <Text style={styles.consValue}>
-                {consumption.toFixed(1)}
-                <Text style={styles.consUnit}> kWh/100</Text>
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.roundBtn, (obdLive || obdEnabled) && { display: 'none' }]}
-              onPress={() => changeCons(consumption + 0.5)}
-              onLongPress={() => changeCons(consumption + 2)}
-              delayLongPress={350}
-              activeOpacity={0.7}
-              accessibilityLabel="Increase"
-            >
-              <Plus size={18} color={C.text} strokeWidth={2.5} />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity onPress={() => setConsSheet(true)} activeOpacity={0.7} hitSlop={10}>
+            <Text style={styles.consValue}>
+              {consumption.toFixed(1)}
+              <Text style={styles.consUnit}> kWh/100 · tap to set</Text>
+            </Text>
+          </TouchableOpacity>
         </View>
         <View style={styles.seg}>
           {presetOptions.map((o) => {
@@ -715,7 +713,8 @@ const styles = StyleSheet.create({
   coldBody: { color: C.textDim, fontFamily: F.regular, fontSize: 12.5, lineHeight: 18, marginTop: 3 },
 
   battRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 14 },
-  battValue: { fontSize: 30, fontFamily: F.display, letterSpacing: -1 },
+  battValue: { fontSize: 34, fontFamily: F.display, letterSpacing: -1.2 },
+  battStep: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 },
   battSub: { fontSize: 12.5, fontFamily: F.medium, color: C.textDim },
   slider: { width: '100%', height: 40 },
   liveRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -739,9 +738,9 @@ const styles = StyleSheet.create({
   consHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 },
   consStep: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   roundBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: C.cardHi,
     alignItems: 'center',
     justifyContent: 'center',
