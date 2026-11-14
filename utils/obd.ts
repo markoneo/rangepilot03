@@ -5,10 +5,18 @@ import * as Trip from './tripTracker';
 /**
  * Live battery % from the car through a Bluetooth LE OBD adapter (ELM327).
  *
- * Web only for now (Web Bluetooth: Chrome on Android/desktop). Read-only: it
- * asks the car for the standard "battery remaining" value (PID 5B) every few
- * seconds. While a drive is running, each change is fed to the trip tracker as
- * a battery correction, so the consumption is learned from the car itself.
+ * Web only for now (Web Bluetooth: Chrome on Android/desktop).
+ *
+ * Deliberately minimal, to stay out of the car's way:
+ * - the ONLY request ever sent to the car is the standard OBD-II "battery
+ *   remaining" value (service 01, PID 5B) — the same thing any OBD app polls;
+ * - no diagnostic sessions, no tester-present, no manufacturer (UDS) requests,
+ *   no scanning, nothing that writes or clears;
+ * - once the control unit that answers is known, only that unit is asked;
+ * - slow polling: every 10 s while driving, every 30 s otherwise.
+ *
+ * While a drive is running, each change is fed to the trip tracker as a
+ * battery correction, so the consumption is learned from the car itself.
  */
 
 export type ObdStatus = 'off' | 'connecting' | 'connected' | 'lost' | 'unsupported-car';
@@ -24,7 +32,8 @@ export interface ObdState {
 }
 
 const ENABLED_KEY = 'ev_obd_enabled';
-const POLL_MS = 5000;
+const POLL_DRIVING_MS = 10000;
+const POLL_IDLE_MS = 30000;
 // Serial-over-BLE services used by common ELM327 adapters (Vgate first)
 const SERVICES: (number | string)[] = [
   0x18f0,
@@ -47,6 +56,7 @@ let wanted = false; // the user asked to be connected
 let busy = false;
 let fails = 0;
 let lastFed: number | null = null;
+let idleTicks = 0;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -79,6 +89,21 @@ async function cmd(c: string, timeoutMs = 5000): Promise<string> {
   const start = Date.now();
   while (!buffer.includes('>') && Date.now() - start < timeoutMs) await sleep(15);
   return buffer.replace(/[>\s]/g, ' ').trim();
+}
+
+/**
+ * With headers on, each answering unit sends a line like "7ED03415BAA".
+ * Returns the request address of the unit whose value is not zero, so later
+ * requests go to that unit alone instead of being broadcast.
+ */
+function socUnit(answer: string): string | null {
+  for (const line of answer.split(/\s+/)) {
+    const m11 = line.match(/^(7E[89A-F])[0-9A-F]{2}415B([0-9A-F]{2})/);
+    if (m11 && m11[2] !== '00') return (parseInt(m11[1], 16) - 8).toString(16).toUpperCase();
+    const m29 = line.match(/^18DAF1([0-9A-F]{2})[0-9A-F]{2}415B([0-9A-F]{2})/);
+    if (m29 && m29[2] !== '00') return `18DA${m29[1]}F1`;
+  }
+  return null;
 }
 
 /** "…415BAA…" → 66.7. With several control units answering, the one that is not zero wins. */
@@ -126,12 +151,20 @@ async function open(dev: any) {
   await cmd('ATE0');
   await cmd('ATL0');
   await cmd('ATS0');
-  await cmd('ATH0');
+  await cmd('ATH1');
   await cmd('ATAT1');
   await cmd('ATSP0');
   // first request also lets the adapter find the car's protocol
-  let soc = parseSoc(await cmd('015B', 15000));
-  if (soc == null) soc = parseSoc(await cmd('015B', 8000));
+  let first = await cmd('015B', 15000);
+  let soc = parseSoc(first);
+  if (soc == null) {
+    first = await cmd('015B', 8000);
+    soc = parseSoc(first);
+  }
+  // from here on, talk only to the unit that reports the battery
+  const unit = socUnit(first);
+  if (unit) await cmd(`ATSH${unit}`);
+  await cmd('ATH0');
   if (soc == null) {
     set({ status: 'unsupported-car', error: 'This car does not report its battery % over OBD.' });
     wanted = false;
@@ -161,11 +194,17 @@ function gotSoc(soc: number) {
 
 function schedule() {
   if (pollTimer) clearTimeout(pollTimer);
-  pollTimer = setTimeout(poll, POLL_MS);
+  pollTimer = setTimeout(poll, POLL_DRIVING_MS);
 }
 
 async function poll() {
   if (!wanted || state.status !== 'connected' || busy) return;
+  // Outside a drive, ask only every third tick (30 s); a drive that starts is picked up within 10 s
+  idleTicks = Trip.getTrip() ? 0 : idleTicks + 1;
+  if (idleTicks % (POLL_IDLE_MS / POLL_DRIVING_MS) !== 0) {
+    schedule();
+    return;
+  }
   busy = true;
   try {
     const soc = parseSoc(await cmd('015B', 4000));

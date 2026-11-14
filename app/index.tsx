@@ -539,7 +539,7 @@ export default function HomeScreen() {
                 <Text style={styles.rowTitle}>OBD adapter</Text>
                 <Text style={styles.rowSub}>
                   {obd.status === 'connected'
-                    ? `${obd.name ?? 'Connected'} · battery % comes from the car`
+                    ? `${obd.name ?? 'Connected'} · live battery %. Unplug it before charging.`
                     : obd.status === 'connecting'
                       ? 'Connecting…'
                       : obd.status === 'lost'
