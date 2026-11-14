@@ -556,6 +556,8 @@ export interface Snapshot {
   speedBasisKmh: number;
   /** battery % is coming live from the car */
   obdLive: boolean;
+  /** consumption on a level road; a route's climbs and descents are added separately */
+  flatConsumption: number;
   /** kWh/100 km the car really used over the last km (OBD only); null until there is enough distance */
   recentConsumption: number | null;
   recentKm: number | null;
@@ -570,51 +572,70 @@ export interface Snapshot {
   gpsGaps: number;
 }
 
-/** kWh/100 km measured from the car's own battery % over the last `windowKm` */
-export function obdMeasured(s: TripState, windowKm: number, minKm: number): { cons: number; km: number } | null {
+/**
+ * The car reports its battery in steps of about 0.4 %. The moment a step happens
+ * is known far more precisely than the value in between, so everything is
+ * measured from step to step: these are the points where the reading changed.
+ */
+function obdPoints(s: TripState): { km: number; soc: number }[] {
   const list = s.obd?.samples;
-  if (!list || list.length < 2) return null;
+  if (!list || list.length === 0) return [];
+  const pts = [list[0]];
+  for (let i = 1; i < list.length; i++) {
+    if (list[i].soc !== list[i - 1].soc) pts.push(list[i]);
+  }
+  // no step for a while (level road at low use, or regeneration): the reading itself is the point
   const last = list[list.length - 1];
-  let first = list[0];
-  for (const p of list) {
-    if (p.km >= last.km - windowKm) {
-      first = p;
-      break;
+  if (last.km - pts[pts.length - 1].km > 1.5) pts.push(last);
+  return pts;
+}
+
+/** Battery % at a distance, read off the line between two steps */
+function socAtKm(pts: { km: number; soc: number }[], km: number): number {
+  if (km <= pts[0].km) return pts[0].soc;
+  for (let i = 1; i < pts.length; i++) {
+    if (km <= pts[i].km) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      return a.soc + ((b.soc - a.soc) * (km - a.km)) / Math.max(1e-6, b.km - a.km);
     }
   }
-  const km = last.km - first.km;
+  return pts[pts.length - 1].soc;
+}
+
+/** kWh/100 km measured from the car's own battery % over the last `windowKm` */
+export function obdMeasured(s: TripState, windowKm: number, minKm: number): { cons: number; km: number } | null {
+  const pts = obdPoints(s);
+  if (pts.length < 2) return null;
+  const end = pts[pts.length - 1];
+  const startKm = Math.max(pts[0].km, end.km - windowKm);
+  const km = end.km - startKm;
   if (km < minKm) return null;
-  return { cons: (s.batteryCapacity * (first.soc - last.soc)) / km, km };
+  return { cons: (s.batteryCapacity * (socAtKm(pts, startKm) - end.soc)) / km, km };
 }
 
 /**
  * Consumption to plan the remaining range with, from the car's battery % over
- * the last 50 km in 5 km pieces. A descent is not counted as lower than half
+ * the last 15 km in 5 km pieces. A descent is not counted as lower than 80% of
  * the normal consumption: the road ahead won't keep going downhill, and a range
  * built on regeneration would promise far too much.
  */
+/** How far back the range looks when the battery % comes from the car */
+const OBD_PLAN_KM = 15;
+
 function obdPlanning(s: TripState, base: number): { cons: number; km: number } | null {
-  const list = s.obd?.samples;
-  if (!list || list.length < 2) return null;
-  const end = list[list.length - 1];
-  const startKm = Math.max(list[0].km, end.km - 50);
+  const pts = obdPoints(s);
+  if (pts.length < 2) return null;
+  const end = pts[pts.length - 1];
+  const startKm = Math.max(pts[0].km, end.km - OBD_PLAN_KM);
   if (end.km - startKm < 3) return null;
-  const socAt = (km: number) => {
-    // samples are in order; the battery at a distance is the reading at or just before it
-    let v = list[0].soc;
-    for (const p of list) {
-      if (p.km > km + 1e-6) break;
-      v = p.soc;
-    }
-    return v;
-  };
   let kwh = 0;
   let total = 0;
   for (let to = end.km; to - startKm > 0.5; to -= 5) {
     const from = Math.max(startKm, to - 5);
     const km = to - from;
-    const c = (s.batteryCapacity * (socAt(from) - socAt(to))) / km;
-    kwh += (Math.max(base * 0.5, c) * km) / 100;
+    const c = (s.batteryCapacity * (socAtKm(pts, from) - socAtKm(pts, to))) / km;
+    kwh += (Math.max(base * 0.8, c) * km) / 100;
     total += km;
   }
   return total >= 3 ? { cons: (kwh / total) * 100, km: total } : null;
@@ -689,16 +710,25 @@ export function snapshot(s: TripState, now: number): Snapshot {
   const distanceKm = s.distanceKm + provisionalKm;
   const battery = batteryAt(s, distanceKm);
   let consumption = Math.round(liveConsumption(s) * 10) / 10;
+  // level-road figure, before the car's own hills are mixed in (used with a route's elevation)
+  const flatConsumption = consumption;
   let recentConsumption: number | null = null;
   let recentKm: number | null = null;
   const obdLive = !!s.obd?.live;
   if (obdLive) {
-    // Range: what the car really used over the last 50 km, eased in with distance.
+    // Range: what the car really used over the last 15 km, eased in with distance.
     const plan = obdPlanning(s, consumption);
     if (plan) {
-      const w = Math.min(0.8, plan.km / 25);
+      const w = Math.min(0.9, plan.km / OBD_PLAN_KM);
       const blended = consumption * (1 - w) + plan.cons * w;
       consumption = Math.round(Math.max(MIN_CONS, Math.min(MAX_CONS, blended)) * 10) / 10;
+    }
+    // Bad news travels fast: when the last 5 km used more than the 15 km average
+    // (a climb, a headwind, a faster road), the range follows that at once.
+    // Good news (a descent) still comes in slowly, through the average above.
+    const fast = obdMeasured(s, 5, 3);
+    if (fast && fast.cons > consumption * 1.1) {
+      consumption = Math.round(Math.min(MAX_CONS, fast.cons) * 10) / 10;
     }
     // What the driver sees as "now": the last 10 km, regeneration included (can be below zero)
     const recent = obdMeasured(s, 10, 3);
@@ -725,6 +755,7 @@ export function snapshot(s: TripState, now: number): Snapshot {
     consumption,
     speedBasisKmh: Math.round(ensureSpeedModel(s).ema),
     obdLive,
+    flatConsumption,
     recentConsumption,
     recentKm,
     measuredConsumption: s.measuredConsumption,

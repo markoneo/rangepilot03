@@ -531,7 +531,9 @@ export default function DriveScreen() {
             const est = estimateArrival({
               capacityKwh: trip.batteryCapacity,
               batteryPct: snap.battery,
-              consumption: snap.consumption,
+              // with OBD the live figure already contains the hills just driven; the route's
+              // remaining climb is added by the estimate itself, so start from the level-road figure
+              consumption: snap.obdLive ? snap.flatConsumption : snap.consumption,
               reservePct: snap.reservePercent,
               km: remaining,
               netM: dest.netM * frac,
