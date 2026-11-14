@@ -31,6 +31,9 @@ import { loadCharges, averagePrice } from '@/utils/charges';
 import { getOutsideTempC, COLD_LIMIT_C, coldNoteSeenToday, markColdNoteSeen } from '@/utils/weather';
 import { ColdChip, COLD_BLUE } from '@/components/ColdChip';
 import { buildProfile, suggest, seasonOf, type Style } from '@/utils/learnedProfile';
+import { useObd } from '@/hooks/useObd';
+import { connectObd, disconnectObd } from '@/utils/obd';
+import { Bluetooth } from 'lucide-react-native';
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const STYLE_ID = 'rp-battery-slider-style-v2';
@@ -87,6 +90,12 @@ export default function HomeScreen() {
     loading: boolean;
     error?: string;
   } | null>(null);
+
+  // Live battery % from the car, for users with an OBD adapter
+  const { obd, supported: obdSupported, enabled: obdEnabled, live: obdLive } = useObd();
+  useEffect(() => {
+    if (obdLive && obd.soc != null) setBattery(obd.soc);
+  }, [obdLive, obd.soc]);
 
   const [tempC, setTempC] = useState<number | null>(null);
   const cold = tempC != null && tempC < COLD_LIMIT_C;
@@ -316,12 +325,28 @@ export default function HomeScreen() {
         )}
 
         <View style={styles.battRow}>
-          <TouchableOpacity onPress={() => setBattSheet(true)} activeOpacity={0.7} hitSlop={8}>
-            <Text style={[styles.battValue, { color: bColor }]}>{battery}%</Text>
+          <TouchableOpacity
+            onPress={() => setBattSheet(true)}
+            disabled={obdLive}
+            activeOpacity={0.7}
+            hitSlop={8}
+          >
+            <Text style={[styles.battValue, { color: bColor }]}>{obdLive ? battery.toFixed(1) : battery}%</Text>
           </TouchableOpacity>
-          <Text style={styles.battSub}>{usable.toFixed(1)} kWh · drag to match your car</Text>
+          {obdLive ? (
+            <View style={styles.liveRow}>
+              <View style={styles.liveDot} />
+              <Text style={styles.battSub}>{usable.toFixed(1)} kWh · live from your car</Text>
+            </View>
+          ) : (
+            <Text style={styles.battSub}>{usable.toFixed(1)} kWh · drag to match your car</Text>
+          )}
         </View>
-        {Platform.OS !== 'web' ? (
+        {obdLive ? (
+          <View style={styles.liveTrack}>
+            <View style={[styles.liveFill, { width: `${battery}%`, backgroundColor: bColor }]} />
+          </View>
+        ) : Platform.OS !== 'web' ? (
           <Slider
             style={styles.slider}
             minimumValue={1}
@@ -373,7 +398,7 @@ export default function HomeScreen() {
           <Text style={styles.sectionLabel}>Consumption</Text>
           <View style={styles.consStep}>
             <TouchableOpacity
-              style={styles.roundBtn}
+              style={[styles.roundBtn, (obdLive || obdEnabled) && { display: 'none' }]}
               onPress={() => changeCons(consumption - 0.5)}
               onLongPress={() => changeCons(consumption - 2)}
               delayLongPress={350}
@@ -389,7 +414,7 @@ export default function HomeScreen() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.roundBtn}
+              style={[styles.roundBtn, (obdLive || obdEnabled) && { display: 'none' }]}
               onPress={() => changeCons(consumption + 0.5)}
               onLongPress={() => changeCons(consumption + 2)}
               delayLongPress={350}
@@ -502,6 +527,41 @@ export default function HomeScreen() {
             </View>
             <ChevronRight size={18} color={C.textMute} />
           </TouchableOpacity>
+          {obdSupported && (
+            <TouchableOpacity
+              style={[styles.row, styles.rowDivider]}
+              onPress={() => (obd.status === 'off' || obd.status === 'unsupported-car' ? connectObd() : undefined)}
+              disabled={obd.status === 'connecting'}
+              activeOpacity={0.8}
+            >
+              <View style={styles.rowIcon}>
+                <Bluetooth size={17} color={C.green} strokeWidth={2.4} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowTitle}>OBD adapter</Text>
+                <Text style={styles.rowSub}>
+                  {obd.status === 'connected'
+                    ? `${obd.name ?? 'Connected'} · battery % comes from the car`
+                    : obd.status === 'connecting'
+                      ? 'Connecting…'
+                      : obd.status === 'lost'
+                        ? 'Connection lost — reconnecting…'
+                        : obd.error
+                          ? obd.error
+                          : obdEnabled
+                            ? 'Not connected — tap to connect'
+                            : 'Connect it for the real battery % from your car'}
+                </Text>
+              </View>
+              {obd.status === 'connected' || obd.status === 'lost' ? (
+                <TouchableOpacity onPress={disconnectObd} hitSlop={10}>
+                  <Text style={styles.rowAction}>Disconnect</Text>
+                </TouchableOpacity>
+              ) : (
+                <ChevronRight size={18} color={C.textMute} />
+              )}
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* This week */}
@@ -658,6 +718,11 @@ const styles = StyleSheet.create({
   battValue: { fontSize: 30, fontFamily: F.display, letterSpacing: -1 },
   battSub: { fontSize: 12.5, fontFamily: F.medium, color: C.textDim },
   slider: { width: '100%', height: 40 },
+  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.green },
+  liveTrack: { height: 12, borderRadius: 6, backgroundColor: C.border, overflow: 'hidden', marginTop: 14, marginBottom: 14 },
+  liveFill: { height: '100%', borderRadius: 6 },
+  rowAction: { fontSize: 13, fontFamily: F.semibold, color: C.textDim },
 
   facts: {
     flexDirection: 'row',
