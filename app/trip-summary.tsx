@@ -87,7 +87,7 @@ export default function TripSummaryScreen() {
     });
   if (trip.minTemperatureC != null && trip.maxTemperatureC != null)
     details.push({
-      icon: <Thermometer size={15} color="#60A5FA" />,
+      icon: <Thermometer size={15} color="#34D17A" />,
       label: 'Outside temp',
       value:
         Math.round(trip.minTemperatureC) === Math.round(trip.maxTemperatureC)
@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
   cmpNote: { fontSize: 12, fontFamily: F.regular, color: C.textMute, marginTop: 8, lineHeight: 17 },
   actions: { gap: 10, marginTop: 4 },
   primary: { backgroundColor: C.blue, borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
-  primaryText: { fontSize: 16, fontFamily: F.semibold, color: '#fff' },
+  primaryText: { fontSize: 16, fontFamily: F.semibold, color: C.onAccent },
   secondary: {
     backgroundColor: C.card,
     borderRadius: 16,

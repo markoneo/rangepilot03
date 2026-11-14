@@ -53,13 +53,13 @@ export default function DrivePermissionScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom + 24 }]}>
       <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
-        <ArrowLeft size={20} color="#9CA3AF" strokeWidth={2} />
+        <ArrowLeft size={20} color="#8B95A1" strokeWidth={2} />
       </TouchableOpacity>
 
       <View style={styles.content}>
         <View style={styles.iconRing}>
           <View style={styles.iconInner}>
-            <MapPin size={36} color={state === 'denied' ? '#EF4444' : '#3B82F6'} strokeWidth={2} />
+            <MapPin size={36} color={state === 'denied' ? '#EF4444' : '#34D17A'} strokeWidth={2} />
           </View>
         </View>
 
@@ -105,7 +105,7 @@ export default function DrivePermissionScreen() {
               activeOpacity={0.85}
               disabled={loading}
             >
-              <MapPin size={18} color="#FFFFFF" strokeWidth={2.5} />
+              <MapPin size={18} color="#06130C" strokeWidth={2.5} />
               <Text style={styles.primaryBtnText}>
                 {loading ? 'Requesting...' : 'Enable GPS'}
               </Text>
@@ -117,7 +117,7 @@ export default function DrivePermissionScreen() {
         ) : (
           <>
             <TouchableOpacity style={styles.primaryBtn} onPress={openSettings} activeOpacity={0.85}>
-              <ExternalLink size={18} color="#FFFFFF" strokeWidth={2.5} />
+              <ExternalLink size={18} color="#06130C" strokeWidth={2.5} />
               <Text style={styles.primaryBtnText}>Open Settings</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.ghostBtn} onPress={() => router.back()} activeOpacity={0.7}>
@@ -133,7 +133,7 @@ export default function DrivePermissionScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#0B0F14',
+    backgroundColor: '#0B0E11',
     paddingHorizontal: 28,
   },
   backBtn: {
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 60,
     borderWidth: 1,
-    borderColor: '#1F2937',
+    borderColor: '#1B2229',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 36,
@@ -163,10 +163,10 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#111827',
+    backgroundColor: '#12161B',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#3B82F6',
+    shadowColor: '#34D17A',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.3,
     shadowRadius: 20,
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 30,
     fontFamily: 'Inter-Bold',
-    color: '#F9FAFB',
+    color: '#F2F5F7',
     textAlign: 'center',
     letterSpacing: -0.8,
     lineHeight: 38,
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   body: {
     fontSize: 15,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
+    color: '#5C6670',
     textAlign: 'center',
     lineHeight: 24,
     marginBottom: 36,
@@ -203,12 +203,12 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#34D17A',
   },
   featureText: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-    color: '#9CA3AF',
+    color: '#8B95A1',
   },
   actions: {
     gap: 12,
@@ -218,10 +218,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#34D17A',
     borderRadius: 18,
     paddingVertical: 18,
-    shadowColor: '#3B82F6',
+    shadowColor: '#34D17A',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,
     shadowRadius: 16,
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
   primaryBtnText: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
-    color: '#FFFFFF',
+    color: '#06130C',
   },
   ghostBtn: {
     paddingVertical: 14,
@@ -242,6 +242,6 @@ const styles = StyleSheet.create({
   ghostBtnText: {
     fontSize: 15,
     fontFamily: 'Inter-Medium',
-    color: '#6B7280',
+    color: '#5C6670',
   },
 });

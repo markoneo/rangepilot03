@@ -19,37 +19,36 @@ import {
 } from '@/utils/storage';
 import { rangeFor } from '@/utils/trackCore';
 import * as Trip from '@/utils/tripTracker';
-import { Zap, Navigation, Clock, ChartLine as LineChart, ChevronRight, Radio, Settings as SettingsIcon } from 'lucide-react-native';
+import { Navigation, Clock, ChartLine as LineChart, ChevronRight, Radio, Settings as SettingsIcon } from 'lucide-react-native';
 import { C, F, batteryColor, fmtMoney } from '@/constants/theme';
-import { Card, Chips, Label, NumberSheet, Stepper } from '@/components/ui';
+import { Card, NumberSheet } from '@/components/ui';
 import { ArrivalCard, DestinationSheet } from '@/components/destination';
 import { computeRoute, routeElevation, estimateArrival, type Place, type RouteInfo, type Elevation } from '@/utils/maps';
 import { getCurrentPosition } from '@/utils/geolocation';
 import { writeJSON } from '@/utils/kv';
-import { Search, Snowflake, Zap as ZapIcon } from 'lucide-react-native';
+import { Search, Snowflake, Zap as ZapIcon, Minus, Plus, X } from 'lucide-react-native';
 import { loadCharges, averagePrice } from '@/utils/charges';
 import { getOutsideTempC, COLD_LIMIT_C, coldNoteSeenToday, markColdNoteSeen } from '@/utils/weather';
 import { ColdChip, COLD_BLUE } from '@/components/ColdChip';
-import { Popup } from '@/components/Popup';
 import { buildProfile, suggest, seasonOf, type Style } from '@/utils/learnedProfile';
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
-  const STYLE_ID = 'rp-battery-slider-style';
+  const STYLE_ID = 'rp-battery-slider-style-v2';
   if (!document.getElementById(STYLE_ID)) {
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
       .rp-battery-slider { -webkit-appearance: none; appearance: none; background: transparent; }
       .rp-battery-slider:focus { outline: none; }
-      .rp-battery-slider::-webkit-slider-runnable-track { height: 12px; border-radius: 6px; background: #1F2937; }
-      .rp-battery-slider::-moz-range-track { height: 12px; border-radius: 6px; background: #1F2937; }
+      .rp-battery-slider::-webkit-slider-runnable-track { height: 12px; border-radius: 6px; background: var(--rp-fill, #1B2229); }
+      .rp-battery-slider::-moz-range-track { height: 12px; border-radius: 6px; background: var(--rp-fill, #1B2229); }
       .rp-battery-slider::-webkit-slider-thumb {
-        -webkit-appearance: none; appearance: none; width: 40px; height: 40px; border-radius: 20px;
-        background: #F3F6FA; border: 3px solid #3B82F6; margin-top: -14px; cursor: grab;
+        -webkit-appearance: none; appearance: none; width: 30px; height: 30px; border-radius: 15px;
+        background: #FFFFFF; border: 0; margin-top: -9px; cursor: grab;
         box-shadow: 0 4px 12px rgba(0,0,0,0.5);
       }
       .rp-battery-slider::-moz-range-thumb {
-        width: 40px; height: 40px; border-radius: 20px; background: #F3F6FA; border: 3px solid #3B82F6;
+        width: 30px; height: 30px; border-radius: 15px; background: #FFFFFF; border: 0;
         cursor: grab; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
       }
     `;
@@ -245,15 +244,11 @@ export default function HomeScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 28 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + (active ? 96 : 168) }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.topBar}>
           <View style={{ flex: 1 }}>
-            <View style={styles.brandRow}>
-              <View style={styles.brandDot} />
-              <Text style={styles.brandText}>RANGE PILOT</Text>
-            </View>
             <Text style={styles.carName} numberOfLines={1}>
               {car.carName}
             </Text>
@@ -285,164 +280,234 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Hero range */}
-        <View style={styles.hero}>
-          <View style={styles.heroTop}>
-            <Zap size={14} color={C.blue} fill={C.blue} />
-            <Text style={styles.heroLabel}>Estimated range</Text>
-            {cold && <ColdChip tempC={tempC!} onPress={() => setColdOpen(true)} />}
-          </View>
-          <Text style={styles.heroValue}>
-            {Math.round(range)}
-            <Text style={styles.heroUnit}> km</Text>
-          </Text>
-          <Text style={styles.heroSub}>
-            {usable.toFixed(1)} kWh · {consumption.toFixed(1)} kWh/100 km
-            {reserve > 0 ? `  ·  ${Math.round(rangeReserve)} km to ${reserve}%` : ''}
-          </Text>
-          <Text style={styles.heroPer10}>
-            10% battery = {Math.round((car.batteryCapacity * 10) / consumption)} km
-          </Text>
+        {/* Range + battery: one block */}
+        <View style={styles.heroTop}>
+          <Text style={styles.heroLabel}>Estimated range</Text>
+          {cold && <ColdChip tempC={tempC!} onPress={() => setColdOpen((o) => !o)} />}
         </View>
+        <Text style={styles.heroValue}>
+          {Math.round(range)}
+          <Text style={styles.heroUnit}> km</Text>
+        </Text>
+
+        {coldOpen && cold && (
+          <View style={styles.cold}>
+            <Snowflake size={16} color={COLD_BLUE} style={{ marginTop: 2 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.coldTitle}>
+                {Math.round(tempC ?? 0)}°C outside — expect 20–30% higher consumption
+              </Text>
+              <Text style={styles.coldBody}>
+                Realistic range today: about {Math.round(range / 1.3)}–{Math.round(range / 1.2)} km. Correct the
+                battery % during the drive and the app learns today’s real consumption.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                setColdOpen(false);
+                markColdNoteSeen();
+              }}
+              hitSlop={12}
+              accessibilityLabel="Dismiss"
+            >
+              <X size={16} color={C.textDim} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={styles.battRow}>
+          <TouchableOpacity onPress={() => setBattSheet(true)} activeOpacity={0.7} hitSlop={8}>
+            <Text style={[styles.battValue, { color: bColor }]}>{battery}%</Text>
+          </TouchableOpacity>
+          <Text style={styles.battSub}>{usable.toFixed(1)} kWh · drag to match your car</Text>
+        </View>
+        {Platform.OS !== 'web' ? (
+          <Slider
+            style={styles.slider}
+            minimumValue={1}
+            maximumValue={100}
+            step={1}
+            value={battery}
+            onValueChange={(v) => setBattery(Math.round(v))}
+            minimumTrackTintColor={bColor}
+            maximumTrackTintColor={C.border}
+            thumbTintColor={C.text}
+          />
+        ) : (
+          <input
+            type="range"
+            min={1}
+            max={100}
+            step={1}
+            value={battery}
+            onChange={(e) => setBattery(Number(e.target.value))}
+            style={
+              {
+                width: '100%',
+                height: 40,
+                cursor: 'pointer',
+                touchAction: 'pan-x',
+                '--rp-fill': `linear-gradient(to right, ${bColor} ${battery}%, #1B2229 ${battery}%)`,
+              } as any
+            }
+            className="rp-battery-slider"
+          />
+        )}
+
+        <View style={styles.facts}>
+          {reserve > 0 && (
+            <Fact value={`${Math.round(rangeReserve)} km`} label={`to ${reserve}% reserve`} first />
+          )}
+          <Fact
+            value={`${Math.round((car.batteryCapacity * 10) / consumption)} km`}
+            label="per 10% battery"
+            first={reserve <= 0}
+          />
+          {cold && (
+            <Fact value={`${Math.round(range / 1.3)}–${Math.round(range / 1.2)}`} label="km in the cold" />
+          )}
+        </View>
+
+        {/* Consumption */}
+        <View style={styles.consHead}>
+          <Text style={styles.sectionLabel}>Consumption</Text>
+          <View style={styles.consStep}>
+            <TouchableOpacity
+              style={styles.roundBtn}
+              onPress={() => changeCons(consumption - 0.5)}
+              onLongPress={() => changeCons(consumption - 2)}
+              delayLongPress={350}
+              activeOpacity={0.7}
+              accessibilityLabel="Decrease"
+            >
+              <Minus size={18} color={C.text} strokeWidth={2.5} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setConsSheet(true)} activeOpacity={0.7} hitSlop={6}>
+              <Text style={styles.consValue}>
+                {consumption.toFixed(1)}
+                <Text style={styles.consUnit}> kWh/100</Text>
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.roundBtn}
+              onPress={() => changeCons(consumption + 0.5)}
+              onLongPress={() => changeCons(consumption + 2)}
+              delayLongPress={350}
+              activeOpacity={0.7}
+              accessibilityLabel="Increase"
+            >
+              <Plus size={18} color={C.text} strokeWidth={2.5} />
+            </TouchableOpacity>
+          </View>
+        </View>
+        <View style={styles.seg}>
+          {presetOptions.map((o) => {
+            const on = o.value === preset;
+            return (
+              <TouchableOpacity
+                key={o.value}
+                style={[styles.segItem, on && styles.segItemOn]}
+                onPress={() => pickPreset(o.value)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.segLabel, on && { color: C.text }]}>{o.label}</Text>
+                <Text style={[styles.segValue, on && { color: C.green }]}>{o.sub}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {anyLearned && (
+          <Text style={styles.learnNote}>
+            ✨ learned from your trips{season && tempC != null ? ` · ${season} weather (${Math.round(tempC)}°C)` : ''}
+          </Text>
+        )}
 
         {/* Can I make it? */}
         {check ? (
-          check.error ? (
-            <Card>
-              <Text style={styles.checkErr}>{check.error}</Text>
-              <TouchableOpacity onPress={() => setCheck(null)}>
-                <Text style={styles.checkLink}>Close</Text>
-              </TouchableOpacity>
-            </Card>
-          ) : (
-            <ArrivalCard
-              place={check.place}
-              km={check.route?.km ?? null}
-              minutes={check.route?.minutes ?? null}
-              climbM={check.elev?.climbM ?? null}
-              descentM={check.elev?.descentM ?? null}
-              reservePct={reserve}
-              loading={check.loading}
-              estimate={
-                check.route
-                  ? estimateArrival({
-                      capacityKwh: car.batteryCapacity,
-                      batteryPct: battery,
-                      consumption,
-                      reservePct: reserve,
-                      km: check.route.km,
-                      netM: check.elev?.netM ?? 0,
-                    })
-                  : null
-              }
-              onChange={openDest}
-              onClear={() => setCheck(null)}
-              footer={
-                !active && check.route ? (
-                  <TouchableOpacity
-                    style={styles.checkStart}
-                    activeOpacity={0.85}
-                    onPress={async () => {
-                      await writeJSON('ev_pending_destination', check.place);
-                      router.push('/drive-permission');
-                    }}
-                  >
-                    <Navigation size={16} color="#fff" />
-                    <Text style={styles.checkStartText}>Start drive to here</Text>
-                  </TouchableOpacity>
-                ) : null
-              }
-            />
-          )
-        ) : (
-          <TouchableOpacity style={styles.checkBtn} onPress={openDest} activeOpacity={0.8}>
-            <Search size={18} color={C.blue} />
-            <Text style={styles.checkBtnText}>Can I make it? Check a destination</Text>
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity style={styles.chargersBtn} onPress={() => router.push('/chargers' as any)} activeOpacity={0.85}>
-          <View style={styles.chargersIcon}>
-            <ZapIcon size={18} color={C.green} fill={C.green} />
+          <View style={{ marginTop: 14 }}>
+            {check.error ? (
+              <Card>
+                <Text style={styles.checkErr}>{check.error}</Text>
+                <TouchableOpacity onPress={() => setCheck(null)}>
+                  <Text style={styles.checkLink}>Close</Text>
+                </TouchableOpacity>
+              </Card>
+            ) : (
+              <ArrivalCard
+                place={check.place}
+                km={check.route?.km ?? null}
+                minutes={check.route?.minutes ?? null}
+                climbM={check.elev?.climbM ?? null}
+                descentM={check.elev?.descentM ?? null}
+                reservePct={reserve}
+                loading={check.loading}
+                estimate={
+                  check.route
+                    ? estimateArrival({
+                        capacityKwh: car.batteryCapacity,
+                        batteryPct: battery,
+                        consumption,
+                        reservePct: reserve,
+                        km: check.route.km,
+                        netM: check.elev?.netM ?? 0,
+                      })
+                    : null
+                }
+                onChange={openDest}
+                onClear={() => setCheck(null)}
+                footer={
+                  !active && check.route ? (
+                    <TouchableOpacity
+                      style={styles.checkStart}
+                      activeOpacity={0.85}
+                      onPress={async () => {
+                        await writeJSON('ev_pending_destination', check.place);
+                        router.push('/drive-permission');
+                      }}
+                    >
+                      <Navigation size={16} color={C.onAccent} />
+                      <Text style={styles.checkStartText}>Start drive to here</Text>
+                    </TouchableOpacity>
+                  ) : null
+                }
+              />
+            )}
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.chargersTitle}>Chargers nearby</Text>
-            <Text style={styles.chargersSub}>See which ones you can reach — and with how much battery</Text>
-          </View>
-          <ChevronRight size={18} color={C.textDim} />
-        </TouchableOpacity>
+        ) : null}
 
-        {/* Battery */}
-        <Card>
-          <Label>Battery now</Label>
-          <TouchableOpacity onPress={() => setBattSheet(true)} activeOpacity={0.7} style={styles.battValueWrap}>
-            <Text style={[styles.battValue, { color: bColor }]}>
-              {battery}
-              <Text style={styles.battPct}>%</Text>
-            </Text>
-          </TouchableOpacity>
-          {Platform.OS !== 'web' ? (
-            <Slider
-              style={styles.slider}
-              minimumValue={1}
-              maximumValue={100}
-              step={1}
-              value={battery}
-              onValueChange={(v) => setBattery(Math.round(v))}
-              minimumTrackTintColor={bColor}
-              maximumTrackTintColor={C.border}
-              thumbTintColor={C.text}
-            />
-          ) : (
-            <input
-              type="range"
-              min={1}
-              max={100}
-              step={1}
-              value={battery}
-              onChange={(e) => setBattery(Number(e.target.value))}
-              style={{ width: '100%', height: 48, cursor: 'pointer', touchAction: 'pan-x' } as any}
-              className="rp-battery-slider"
-            />
+        <View style={[styles.list, check ? null : { marginTop: 14 }]}>
+          {!check && (
+            <TouchableOpacity style={styles.row} onPress={openDest} activeOpacity={0.8}>
+              <View style={styles.rowIcon}>
+                <Search size={17} color={C.green} strokeWidth={2.4} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowTitle}>Can I make it?</Text>
+                <Text style={styles.rowSub}>Check a destination</Text>
+              </View>
+              <ChevronRight size={18} color={C.textMute} />
+            </TouchableOpacity>
           )}
-        </Card>
-
-        {/* Consumption */}
-        <Card>
-          <Label>Consumption</Label>
-          <Chips options={presetOptions} value={preset} onChange={pickPreset} />
-          {anyLearned && (
-            <Text style={styles.learnNote}>
-              ✨ learned from your trips{season && tempC != null ? ` · ${season} weather (${Math.round(tempC)}°C)` : ''}
-            </Text>
-          )}
-          <View style={{ height: 16 }} />
-          <Stepper
-            value={consumption.toFixed(1)}
-            unit="kWh/100"
-            onMinus={() => changeCons(consumption - 0.5)}
-            onPlus={() => changeCons(consumption + 0.5)}
-            onMinusLong={() => changeCons(consumption - 2)}
-            onPlusLong={() => changeCons(consumption + 2)}
-            onPressValue={() => setConsSheet(true)}
-          />
-        </Card>
-
-        {!active && (
           <TouchableOpacity
-            style={styles.startBtn}
-            onPress={() => router.push('/drive-permission')}
-            activeOpacity={0.85}
+            style={[styles.row, !check && styles.rowDivider]}
+            onPress={() => router.push('/chargers' as any)}
+            activeOpacity={0.8}
           >
-            <Navigation size={20} color="#FFFFFF" strokeWidth={2.5} />
-            <Text style={styles.startText}>Start drive</Text>
+            <View style={styles.rowIcon}>
+              <ZapIcon size={17} color={C.green} fill={C.green} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTitle}>Chargers nearby</Text>
+              <Text style={styles.rowSub}>Which you can reach, and with how much battery</Text>
+            </View>
+            <ChevronRight size={18} color={C.textMute} />
           </TouchableOpacity>
-        )}
+        </View>
 
         {/* This week */}
         {week.count > 0 && (
           <TouchableOpacity style={styles.week} onPress={() => router.push('/analytics')} activeOpacity={0.85}>
-            <Text style={styles.weekLabel}>Last 7 days</Text>
+            <Text style={styles.sectionLabel}>Last 7 days</Text>
             <View style={styles.weekRow}>
               <WeekStat value={week.km.toFixed(0)} unit="km" />
               <WeekStat value={String(week.count)} unit={week.count === 1 ? 'trip' : 'trips'} />
@@ -451,40 +516,35 @@ export default function HomeScreen() {
             </View>
           </TouchableOpacity>
         )}
+      </ScrollView>
 
-        <View style={styles.links}>
-          <TouchableOpacity style={styles.link} onPress={() => router.push('/trip-history')} activeOpacity={0.8}>
-            <Clock size={16} color={C.blue} strokeWidth={2.2} />
-            <Text style={styles.linkText}>Trips</Text>
+      {/* Bottom: start + sections */}
+      <View style={[styles.bottom, { paddingBottom: insets.bottom + 8 }]}>
+        {!active && (
+          <TouchableOpacity
+            style={styles.startBtn}
+            onPress={() => router.push('/drive-permission')}
+            activeOpacity={0.85}
+          >
+            <Navigation size={20} color={C.onAccent} strokeWidth={2.5} />
+            <Text style={styles.startText}>Start drive</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.link} onPress={() => router.push('/charges' as any)} activeOpacity={0.8}>
-            <ZapIcon size={16} color={C.green} strokeWidth={2.2} />
-            <Text style={styles.linkText}>Charging</Text>
+        )}
+        <View style={styles.tabs}>
+          <TouchableOpacity style={styles.tab} onPress={() => router.push('/trip-history')} activeOpacity={0.7}>
+            <Clock size={20} color={C.textDim} strokeWidth={2} />
+            <Text style={styles.tabText}>Trips</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.link} onPress={() => router.push('/analytics')} activeOpacity={0.8}>
-            <LineChart size={16} color={C.blue} strokeWidth={2.2} />
-            <Text style={styles.linkText}>Statistics</Text>
+          <TouchableOpacity style={styles.tab} onPress={() => router.push('/charges' as any)} activeOpacity={0.7}>
+            <ZapIcon size={20} color={C.textDim} strokeWidth={2} />
+            <Text style={styles.tabText}>Charging</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.tab} onPress={() => router.push('/analytics')} activeOpacity={0.7}>
+            <LineChart size={20} color={C.textDim} strokeWidth={2} />
+            <Text style={styles.tabText}>Statistics</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
-      <Popup
-        visible={coldOpen && cold}
-        tone={COLD_BLUE}
-        icon={<Snowflake size={26} color={COLD_BLUE} />}
-        title={`${Math.round(tempC ?? 0)}°C outside — expect 20–30% higher consumption`}
-        body={`Realistic range today: about ${Math.round(range / 1.3)}–${Math.round(range / 1.2)} km. Correct the battery % during the drive and the app learns today’s real consumption.`}
-        primary={{
-          label: 'OK',
-          onPress: () => {
-            setColdOpen(false);
-            markColdNoteSeen();
-          },
-        }}
-        onDismiss={() => {
-          setColdOpen(false);
-          markColdNoteSeen();
-        }}
-      />
+      </View>
 
       <DestinationSheet
         visible={destSheet}
@@ -526,6 +586,19 @@ export default function HomeScreen() {
   );
 }
 
+function Fact({ value, label, first }: { value: string; label: string; first?: boolean }) {
+  return (
+    <View style={[styles.fact, !first && styles.factDivider]}>
+      <Text style={styles.factValue} numberOfLines={1} adjustsFontSizeToFit>
+        {value}
+      </Text>
+      <Text style={styles.factLabel} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 function WeekStat({ value, unit }: { value: string; unit: string }) {
   return (
     <View style={{ flex: 1, alignItems: 'center' }}>
@@ -538,89 +611,99 @@ function WeekStat({ value, unit }: { value: string; unit: string }) {
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.bg },
+  scroll: { paddingHorizontal: 22, paddingTop: 10 },
+  topBar: { flexDirection: 'row', alignItems: 'center', marginBottom: 18, gap: 12 },
+  carName: { fontSize: 22, fontFamily: F.displayBold, color: C.text, letterSpacing: -0.5 },
+  carSub: { fontSize: 13, fontFamily: F.regular, color: C.textDim, marginTop: 1 },
   settingsBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.border,
   },
-  root: { flex: 1, backgroundColor: C.bg },
-  scroll: { paddingHorizontal: 16, paddingTop: 12 },
-  topBar: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 12 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  brandDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.blue },
-  brandText: { fontSize: 11, fontFamily: F.semibold, color: C.textDim, letterSpacing: 2 },
-  carName: { fontSize: 24, fontFamily: F.bold, color: C.text, letterSpacing: -0.5 },
-  carSub: { fontSize: 13, fontFamily: F.regular, color: C.textDim, marginTop: 2 },
   activeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     backgroundColor: C.greenDim,
-    borderColor: C.green + '55',
-    borderWidth: 1,
     borderRadius: 16,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: 16,
   },
   activeTitle: { fontSize: 15, fontFamily: F.semibold, color: C.text },
   activeSub: { fontSize: 12.5, fontFamily: F.medium, color: C.textDim, marginTop: 2 },
   activeAction: { fontSize: 14, fontFamily: F.bold, color: C.green },
-  hero: {
-    backgroundColor: C.blueDim,
-    borderRadius: 24,
-    padding: 22,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: C.blue + '40',
-  },
-  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  heroLabel: {
-    fontSize: 12,
-    fontFamily: F.semibold,
-    color: '#93C5FD',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  heroValue: { fontSize: 80, fontFamily: F.bold, color: C.text, letterSpacing: -4, lineHeight: 88, marginTop: 4 },
-  heroUnit: { fontSize: 28, color: C.blue, letterSpacing: -0.5 },
-  heroSub: { fontSize: 13, fontFamily: F.medium, color: '#93C5FD', marginTop: 4 },
-  heroPer10: { fontSize: 15, fontFamily: F.bold, color: C.text, marginTop: 8 },
-  battValueWrap: { alignItems: 'center', marginTop: -4, marginBottom: 4 },
-  battValue: { fontSize: 48, fontFamily: F.bold, letterSpacing: -2 },
-  battPct: { fontSize: 22, color: C.textDim },
-  slider: { width: '100%', height: 48 },
+
+  heroTop: { flexDirection: 'row', alignItems: 'center' },
+  heroLabel: { fontSize: 12, fontFamily: F.semibold, color: C.textDim, letterSpacing: 1, textTransform: 'uppercase' },
+  sectionLabel: { fontSize: 12, fontFamily: F.semibold, color: C.textDim, letterSpacing: 1, textTransform: 'uppercase' },
+  heroValue: { fontSize: 92, fontFamily: F.display, color: C.text, letterSpacing: -4.5, lineHeight: 92, marginTop: 6 },
+  heroUnit: { fontSize: 26, fontFamily: F.displayBold, color: C.textDim, letterSpacing: -0.5 },
   cold: {
     flexDirection: 'row',
     gap: 10,
     alignItems: 'flex-start',
-    backgroundColor: '#0C2233',
-    borderColor: '#7DD3FC44',
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
+    backgroundColor: '#0F1A22',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 12,
   },
-  coldTitle: { color: C.text, fontFamily: F.semibold, fontSize: 14 },
+  coldTitle: { color: C.text, fontFamily: F.semibold, fontSize: 13.5, lineHeight: 18 },
   coldBody: { color: C.textDim, fontFamily: F.regular, fontSize: 12.5, lineHeight: 18, marginTop: 3 },
-  learnNote: { fontSize: 11.5, fontFamily: F.medium, color: C.textMute, marginTop: 8 },
-  checkBtn: {
+
+  battRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 14 },
+  battValue: { fontSize: 30, fontFamily: F.display, letterSpacing: -1 },
+  battSub: { fontSize: 12.5, fontFamily: F.medium, color: C.textDim },
+  slider: { width: '100%', height: 40 },
+
+  facts: {
     flexDirection: 'row',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: C.border,
+    marginTop: 8,
+  },
+  fact: { flex: 1, paddingVertical: 12 },
+  factDivider: { borderLeftWidth: 1, borderLeftColor: C.border, paddingLeft: 14 },
+  factValue: { fontSize: 19, fontFamily: F.displayBold, color: C.text, letterSpacing: -0.5 },
+  factLabel: { fontSize: 12, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
+
+  consHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 },
+  consStep: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  roundBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: C.cardHi,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: C.blue + '88',
-    paddingVertical: 15,
-    marginBottom: 12,
   },
-  checkBtnText: { fontSize: 15, fontFamily: F.semibold, color: C.blue },
+  consValue: { fontSize: 22, fontFamily: F.display, color: C.text, letterSpacing: -0.6 },
+  consUnit: { fontSize: 12, fontFamily: F.medium, color: C.textDim, letterSpacing: 0 },
+  seg: { flexDirection: 'row', gap: 4, backgroundColor: C.card, borderRadius: 16, padding: 4, marginTop: 10 },
+  segItem: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 12 },
+  segItemOn: { backgroundColor: C.borderHi },
+  segLabel: { fontSize: 13, fontFamily: F.semibold, color: C.textDim },
+  segValue: { fontSize: 14, fontFamily: F.displayBold, color: C.text, marginTop: 1 },
+  learnNote: { fontSize: 11.5, fontFamily: F.medium, color: C.textMute, marginTop: 8 },
+
+  list: { backgroundColor: C.card, borderRadius: 20, marginBottom: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 14 },
+  rowDivider: { borderTopWidth: 1, borderTopColor: C.border },
+  rowIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: C.greenDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowTitle: { fontSize: 15, fontFamily: F.semibold, color: C.text },
+  rowSub: { fontSize: 12.5, fontFamily: F.regular, color: C.textDim, marginTop: 1 },
+
   checkErr: { color: C.text, fontFamily: F.medium, fontSize: 14 },
   checkLink: { color: C.blue, fontFamily: F.semibold, fontSize: 14, marginTop: 10 },
   checkStart: {
@@ -629,11 +712,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: C.blue,
-    borderRadius: 12,
-    paddingVertical: 12,
+    borderRadius: 14,
+    paddingVertical: 13,
     marginTop: 14,
   },
-  checkStartText: { color: '#fff', fontFamily: F.semibold, fontSize: 15 },
+  checkStartText: { color: C.onAccent, fontFamily: F.bold, fontSize: 15 },
+
+  week: { backgroundColor: C.card, borderRadius: 20, padding: 16, marginBottom: 12 },
+  weekRow: { flexDirection: 'row', marginTop: 10 },
+  weekValue: { fontSize: 20, fontFamily: F.displayBold, color: C.text, letterSpacing: -0.5 },
+  weekUnit: { fontSize: 11, fontFamily: F.medium, color: C.textMute, marginTop: 2 },
+
+  bottom: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: C.bg,
+    paddingHorizontal: 22,
+    paddingTop: 10,
+  },
   startBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -641,56 +739,10 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: C.blue,
     borderRadius: 18,
-    paddingVertical: 19,
-    marginTop: 4,
-    marginBottom: 12,
+    height: 58,
   },
-  startText: { fontSize: 17, fontFamily: F.semibold, color: '#FFFFFF' },
-  week: {
-    backgroundColor: C.card,
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: C.border,
-    marginBottom: 12,
-  },
-  weekLabel: {
-    fontSize: 12,
-    fontFamily: F.semibold,
-    color: C.textDim,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 10,
-  },
-  weekRow: { flexDirection: 'row' },
-  weekValue: { fontSize: 20, fontFamily: F.bold, color: C.text, letterSpacing: -0.5 },
-  weekUnit: { fontSize: 11, fontFamily: F.medium, color: C.textMute, marginTop: 2 },
-  chargersBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 14,
-  },
-  chargersIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.greenDim, alignItems: 'center', justifyContent: 'center' },
-  chargersTitle: { fontSize: 15.5, fontFamily: F.semibold, color: C.text },
-  chargersSub: { fontSize: 12.5, fontFamily: F.regular, color: C.textDim, marginTop: 2 },
-  links: { flexDirection: 'row', gap: 10 },
-  link: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 15,
-    backgroundColor: C.card,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  linkText: { fontSize: 14, fontFamily: F.semibold, color: C.text },
+  startText: { fontSize: 17, fontFamily: F.bold, color: C.onAccent },
+  tabs: { flexDirection: 'row', marginTop: 6 },
+  tab: { flex: 1, alignItems: 'center', gap: 3, paddingVertical: 8 },
+  tabText: { fontSize: 11, fontFamily: F.semibold, color: C.textDim },
 });

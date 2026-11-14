@@ -124,7 +124,7 @@ export default function AnalyticsScreen() {
     const pick = (f: (m: M) => boolean) => ms.filter(f);
     return [
       {
-        icon: <Thermometer size={15} color="#60A5FA" />,
+        icon: <Thermometer size={15} color="#34D17A" />,
         title: 'Temperature',
         a: { label: 'Below 10°C', ms: pick((m) => m.temp != null && m.temp < 10) },
         b: { label: 'Above 20°C', ms: pick((m) => m.temp != null && m.temp > 20) },
@@ -406,7 +406,7 @@ function BarChart({ bars }: { bars: Bar[] }) {
           const isLast = i === bars.length - 1;
           return (
             <G key={i}>
-              <Rect x={x} y={y} width={bw} height={h} rx={5} fill={b.km > 0 ? (isLast ? C.blue : '#2C4A7A') : C.border} />
+              <Rect x={x} y={y} width={bw} height={h} rx={5} fill={b.km > 0 ? (isLast ? C.blue : '#12261B') : C.border} />
               {b.km > 0 && b.km === max && (
                 <SvgText x={x + bw / 2} y={y - 4} fontSize="10" fill={C.textDim} textAnchor="middle">
                   {Math.round(b.km)}

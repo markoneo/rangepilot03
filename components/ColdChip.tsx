@@ -32,7 +32,7 @@ export function ColdChip({ tempC, onPress }: { tempC: number; onPress: () => voi
   return (
     <TouchableOpacity style={s.chip} onPress={onPress} activeOpacity={0.75} hitSlop={8}>
       <Animated.View style={{ opacity: pulse }}>
-        <Snowflake size={20} color={COLD_BLUE} strokeWidth={2.4} />
+        <Snowflake size={14} color={COLD_BLUE} strokeWidth={2.4} />
       </Animated.View>
       <Text style={s.text}>{Math.round(tempC)}°C</Text>
     </TouchableOpacity>
@@ -44,13 +44,11 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: COLD_BLUE + '1F',
-    borderWidth: 1,
-    borderColor: COLD_BLUE + '66',
     marginLeft: 8,
   },
-  text: { color: COLD_BLUE, fontFamily: F.bold, fontSize: 15 },
+  text: { color: COLD_BLUE, fontFamily: F.semibold, fontSize: 12.5 },
 });
