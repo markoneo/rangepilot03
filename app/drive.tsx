@@ -25,6 +25,8 @@ import { buildProfile, suggest, styleOf, seasonOf, STYLES, type Profile } from '
 import { ArrivalCard, DestinationSheet } from '@/components/destination';
 import { computeRoute, routeElevation, estimateArrival, type Place } from '@/utils/maps';
 import { destinationRemainingKm, CHARGE_JUMP_PCT } from '@/utils/trackCore';
+import { useObd } from '@/hooks/useObd';
+import { connectObd } from '@/utils/obd';
 import { getCurrentPosition, watchForeground } from '@/utils/geolocation';
 import { createMovingDetector } from '@/utils/movingDetector';
 import { readJSON, kv } from '@/utils/kv';
@@ -59,6 +61,7 @@ function useTripSnapshot(): Snapshot | null {
 export default function DriveScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const obdState = useObd();
   const params = useLocalSearchParams<{ start?: string }>();
   const snap = useTripSnapshot();
   const trip = Trip.getTrip();
@@ -298,6 +301,9 @@ export default function DriveScreen() {
   }
 
   const paused = snap.phase === 'paused';
+  const obdLive = obdState.live;
+  const obdEnabled = obdState.enabled;
+  const obd = obdState.obd;
   const bColor = batteryColor(snap.battery);
   const kwhLeft = (trip.batteryCapacity * snap.usableBattery) / 100;
   // km per 10 % of battery at the current (or learned) consumption
@@ -390,17 +396,27 @@ export default function DriveScreen() {
         </Text>
 
         {/* Battery — match your car */}
-        <View style={{ marginTop: 14 }}>
-          <Stepper
-            value={`${shownBattery.toFixed(1)}%`}
-            color={batteryColor(shownBattery)}
-            onMinus={() => stepBattery(-1)}
-            onPlus={() => stepBattery(1)}
-            onMinusLong={() => stepBattery(-5)}
-            onPlusLong={() => stepBattery(5)}
-            onPressValue={() => setBatterySheet(true)}
-          />
-        </View>
+        {obdLive ? (
+          <View style={styles.liveBatt}>
+            <Text style={[styles.liveBattValue, { color: bColor }]}>{snap.battery.toFixed(1)}%</Text>
+            <View style={styles.liveRow}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>live from your car</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={{ marginTop: 14 }}>
+            <Stepper
+              value={`${shownBattery.toFixed(1)}%`}
+              color={batteryColor(shownBattery)}
+              onMinus={() => stepBattery(-1)}
+              onPlus={() => stepBattery(1)}
+              onMinusLong={() => stepBattery(-5)}
+              onPlusLong={() => stepBattery(5)}
+              onPressValue={() => setBatterySheet(true)}
+            />
+          </View>
+        )}
         <View style={styles.battTrack}>
           <View
             style={[
@@ -412,10 +428,30 @@ export default function DriveScreen() {
             <View style={[styles.reserveMark, { left: `${snap.reservePercent}%` }]} />
           )}
         </View>
-        <Text style={styles.hint}>
-          Match your car · {kwhLeft.toFixed(1)} kWh usable. Correct it whenever your car shows a different %;
-          after 5 km the app learns your real consumption from it.
-        </Text>
+        {obdLive ? (
+          <Text style={styles.hint}>
+            {kwhLeft.toFixed(1)} kWh usable. Battery % and consumption come from your car, hills and
+            regeneration included.
+          </Text>
+        ) : (
+          <>
+            <Text style={styles.hint}>
+              Match your car · {kwhLeft.toFixed(1)} kWh usable. Correct it whenever your car shows a different %;
+              after 5 km the app learns your real consumption from it.
+            </Text>
+            {obdEnabled && (
+              <TouchableOpacity style={styles.obdReconnect} onPress={connectObd} activeOpacity={0.8}>
+                <Text style={styles.obdReconnectText}>
+                  {obd.status === 'connecting'
+                    ? 'Connecting to OBD…'
+                    : obd.status === 'lost'
+                      ? 'OBD connection lost — reconnecting…'
+                      : 'OBD not connected — tap to connect'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
+        )}
 
         {/* Quick facts: km per battery %, consumption */}
         <View style={styles.facts}>
@@ -432,18 +468,33 @@ export default function DriveScreen() {
             onPress={() => setConsSheet(true)}
             activeOpacity={0.7}
           >
-            <Text style={[styles.factValue, { color: bColor }]}>{snap.consumption.toFixed(1)}</Text>
-            <Text style={styles.factLabel} numberOfLines={1}>
-              kWh/100 ·{' '}
-              {snap.learnConfidence === 'none'
-                ? 'preset'
-                : snap.learnConfidence === 'low'
-                  ? 'learning'
-                  : snap.learnConfidence === 'medium'
-                    ? 'learned'
-                    : 'learned ✓'}
+            <Text style={[styles.factValue, { color: bColor }]}>
+              {(obdLive && snap.recentConsumption != null ? snap.recentConsumption : snap.consumption).toFixed(1)}
             </Text>
-            <Text style={styles.factSub}>at ~{snap.speedBasisKmh} km/h</Text>
+            {obdLive ? (
+              <>
+                <Text style={styles.factLabel} numberOfLines={1}>
+                  kWh/100 · {snap.recentConsumption != null ? 'from car' : 'preset'}
+                </Text>
+                <Text style={styles.factSub}>
+                  {snap.recentConsumption != null ? `last ${snap.recentKm} km` : 'measuring…'}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.factLabel} numberOfLines={1}>
+                  kWh/100 ·{' '}
+                  {snap.learnConfidence === 'none'
+                    ? 'preset'
+                    : snap.learnConfidence === 'low'
+                      ? 'learning'
+                      : snap.learnConfidence === 'medium'
+                        ? 'learned'
+                        : 'learned ✓'}
+                </Text>
+                <Text style={styles.factSub}>at ~{snap.speedBasisKmh} km/h</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -967,6 +1018,13 @@ const styles = StyleSheet.create({
   },
   heroValue: { fontSize: 92, fontFamily: F.display, letterSpacing: -4.5, lineHeight: 92, marginTop: 6 },
   heroUnit: { fontSize: 26, fontFamily: F.displayBold, color: C.textDim, letterSpacing: -0.5 },
+  liveBatt: { alignItems: 'center', marginTop: 14 },
+  liveBattValue: { fontSize: 44, fontFamily: F.display, letterSpacing: -1.6, lineHeight: 48 },
+  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.green },
+  liveText: { fontSize: 12, fontFamily: F.semibold, color: C.textDim },
+  obdReconnect: { alignSelf: 'center', marginTop: 10, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: C.cardHi },
+  obdReconnectText: { fontSize: 12.5, fontFamily: F.semibold, color: C.text },
   facts: { flexDirection: 'row', borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.border, marginTop: 14 },
   fact: { flex: 1, paddingVertical: 12 },
   factDivider: { borderLeftWidth: 1, borderLeftColor: C.border, paddingLeft: 14 },
