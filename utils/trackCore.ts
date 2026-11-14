@@ -75,6 +75,12 @@ export interface TripState {
   measuredConsumption: number | null;
   /** battery % used in the stretch the learned value is based on (confidence) */
   measuredUsedPct?: number | null;
+  /**
+   * Battery % read live from the car (OBD). While live, the car's value is the
+   * battery — nothing is predicted — and consumption is measured from how the
+   * car's % moves over distance, so hills and regeneration are included.
+   */
+  obd?: { live: boolean; samples: { km: number; soc: number }[] };
   /** latest outside temperature (°C) */
   outsideTempC?: number | null;
   /** speed-aware consumption model (absent on drives started by older versions) */
@@ -548,6 +554,11 @@ export interface Snapshot {
   consumption: number;
   /** smoothed speed the consumption/range are calculated for */
   speedBasisKmh: number;
+  /** battery % is coming live from the car */
+  obdLive: boolean;
+  /** kWh/100 km the car really used over the last km (OBD only); null until there is enough distance */
+  recentConsumption: number | null;
+  recentKm: number | null;
   measuredConsumption: number | null;
   learnConfidence: 'none' | 'low' | 'medium' | 'high';
   outsideTempC: number | null;
@@ -559,7 +570,83 @@ export interface Snapshot {
   gpsGaps: number;
 }
 
+/** kWh/100 km measured from the car's own battery % over the last `windowKm` */
+export function obdMeasured(s: TripState, windowKm: number, minKm: number): { cons: number; km: number } | null {
+  const list = s.obd?.samples;
+  if (!list || list.length < 2) return null;
+  const last = list[list.length - 1];
+  let first = list[0];
+  for (const p of list) {
+    if (p.km >= last.km - windowKm) {
+      first = p;
+      break;
+    }
+  }
+  const km = last.km - first.km;
+  if (km < minKm) return null;
+  return { cons: (s.batteryCapacity * (first.soc - last.soc)) / km, km };
+}
+
+/**
+ * Consumption to plan the remaining range with, from the car's battery % over
+ * the last 50 km in 5 km pieces. A descent is not counted as lower than half
+ * the normal consumption: the road ahead won't keep going downhill, and a range
+ * built on regeneration would promise far too much.
+ */
+function obdPlanning(s: TripState, base: number): { cons: number; km: number } | null {
+  const list = s.obd?.samples;
+  if (!list || list.length < 2) return null;
+  const end = list[list.length - 1];
+  const startKm = Math.max(list[0].km, end.km - 50);
+  if (end.km - startKm < 3) return null;
+  const socAt = (km: number) => {
+    // samples are in order; the battery at a distance is the reading at or just before it
+    let v = list[0].soc;
+    for (const p of list) {
+      if (p.km > km + 1e-6) break;
+      v = p.soc;
+    }
+    return v;
+  };
+  let kwh = 0;
+  let total = 0;
+  for (let to = end.km; to - startKm > 0.5; to -= 5) {
+    const from = Math.max(startKm, to - 5);
+    const km = to - from;
+    const c = (s.batteryCapacity * (socAt(from) - socAt(to))) / km;
+    kwh += (Math.max(base * 0.5, c) * km) / 100;
+    total += km;
+  }
+  return total >= 3 ? { cons: (kwh / total) * 100, km: total } : null;
+}
+
+/** A battery % read from the car. No learning by speed here: the car is the truth. */
+export function obdBattery(s: TripState, value: number, now: number) {
+  const m = ensureSpeedModel(s);
+  const v = Math.max(0, Math.min(100, Math.round(value * 10) / 10));
+  const obd = (s.obd ??= { live: true, samples: [] });
+  obd.live = true;
+  const last = obd.samples[obd.samples.length - 1];
+  // charged, or a new stretch after a long break in readings: start measuring again
+  if (last && v >= last.soc + CHARGE_JUMP_PCT) obd.samples = [];
+  const tail = obd.samples[obd.samples.length - 1];
+  if (!tail || s.distanceKm - tail.km >= 0.2) obd.samples.push({ km: s.distanceKm, soc: v });
+  else tail.soc = v;
+  // keep about the last 60 km
+  while (obd.samples.length > 2 && s.distanceKm - obd.samples[1].km > 60) obd.samples.shift();
+  s.batteryAnchor = v;
+  s.batteryAnchorDistance = s.distanceKm;
+  m.curveKwhSinceAnchor = 0;
+  s.updatedAt = now;
+}
+
+export function setObdLive(s: TripState, live: boolean) {
+  if (s.obd) s.obd.live = live;
+}
+
 export function batteryAt(s: TripState, distanceKm: number): number {
+  // Live from the car: show exactly what the car says
+  if (s.obd?.live) return Math.max(0, Math.min(100, s.batteryAnchor));
   const m = ensureSpeedModel(s);
   const since = Math.max(0, s.distanceKm - s.batteryAnchorDistance);
   // provisional km (tunnel estimate) beyond the committed distance
@@ -601,7 +688,25 @@ export function snapshot(s: TripState, now: number): Snapshot {
   }
   const distanceKm = s.distanceKm + provisionalKm;
   const battery = batteryAt(s, distanceKm);
-  const consumption = Math.round(liveConsumption(s) * 10) / 10;
+  let consumption = Math.round(liveConsumption(s) * 10) / 10;
+  let recentConsumption: number | null = null;
+  let recentKm: number | null = null;
+  const obdLive = !!s.obd?.live;
+  if (obdLive) {
+    // Range: what the car really used over the last 50 km, eased in with distance.
+    const plan = obdPlanning(s, consumption);
+    if (plan) {
+      const w = Math.min(0.8, plan.km / 25);
+      const blended = consumption * (1 - w) + plan.cons * w;
+      consumption = Math.round(Math.max(MIN_CONS, Math.min(MAX_CONS, blended)) * 10) / 10;
+    }
+    // What the driver sees as "now": the last 10 km, regeneration included (can be below zero)
+    const recent = obdMeasured(s, 10, 3);
+    if (recent) {
+      recentConsumption = Math.round(Math.max(-40, Math.min(MAX_CONS, recent.cons)) * 10) / 10;
+      recentKm = Math.round(recent.km);
+    }
+  }
   const usableBattery = Math.max(0, battery - s.reservePercent);
   const elapsedSec = Math.floor(activeMs(s, now) / 1000);
   const movingSec = Math.floor(s.movingMs / 1000);
@@ -619,6 +724,9 @@ export function snapshot(s: TripState, now: number): Snapshot {
     energyUsedKwh: Math.max(0, (s.batteryCapacity * (s.startBattery - battery)) / 100),
     consumption,
     speedBasisKmh: Math.round(ensureSpeedModel(s).ema),
+    obdLive,
+    recentConsumption,
+    recentKm,
     measuredConsumption: s.measuredConsumption,
     learnConfidence:
       s.measuredConsumption == null || s.measuredUsedPct == null
