@@ -129,6 +129,7 @@ export default function RootLayout() {
         <Stack.Screen name="analytics" />
         <Stack.Screen name="charges" />
         <Stack.Screen name="chargers" />
+        <Stack.Screen name="obd" />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="light" />
