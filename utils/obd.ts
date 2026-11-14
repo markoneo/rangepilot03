@@ -1,11 +1,10 @@
-import { Platform } from 'react-native';
 import { kv } from './kv';
 import * as Trip from './tripTracker';
+import { connectKnown, connectNew, ownPicker, scanAdapters, transportSupported, type ObdLink } from './obdTransport';
 
 /**
  * Live battery % from the car through a Bluetooth LE OBD adapter (ELM327).
- *
- * Web only for now (Web Bluetooth: Chrome on Android/desktop).
+ * Works in the native apps and, on the web, in browsers with Web Bluetooth.
  *
  * Deliberately minimal, to stay out of the car's way:
  * - the ONLY request ever sent to the car is the standard OBD-II "battery
@@ -15,9 +14,11 @@ import * as Trip from './tripTracker';
  * - once the control unit that answers is known, only that unit is asked;
  * - slow polling: every 10 s while driving, every 30 s otherwise.
  *
- * While a drive is running, each change is fed to the trip tracker as a
- * battery correction, so the consumption is learned from the car itself.
+ * While a drive is running the car's value is the battery, and the
+ * consumption is measured from it.
  */
+
+export { ownPicker as obdOwnPicker, scanAdapters as scanObdAdapters };
 
 export type ObdStatus = 'off' | 'connecting' | 'connected' | 'lost' | 'unsupported-car';
 
@@ -34,22 +35,9 @@ export interface ObdState {
 const ENABLED_KEY = 'ev_obd_enabled';
 const POLL_DRIVING_MS = 10000;
 const POLL_IDLE_MS = 30000;
-// Serial-over-BLE services used by common ELM327 adapters (Vgate first)
-const SERVICES: (number | string)[] = [
-  0x18f0,
-  'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
-  0xfff0,
-  0xffe0,
-  0xffe5,
-  0xae30,
-  '49535343-fe7d-4ae5-8fa9-9fafd205e455',
-  '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
-];
-
 let state: ObdState = { status: 'off', soc: null, at: null, name: null, error: null };
 const listeners = new Set<() => void>();
-let device: any = null;
-let writeChar: any = null;
+let link: ObdLink | null = null;
 let buffer = '';
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let wanted = false; // the user asked to be connected
@@ -68,7 +56,7 @@ function set(patch: Partial<ObdState>) {
 }
 
 export function obdSupported(): boolean {
-  return Platform.OS === 'web' && typeof navigator !== 'undefined' && !!(navigator as any).bluetooth;
+  return transportSupported();
 }
 export function getObd(): ObdState {
   return state;
@@ -83,11 +71,9 @@ export async function obdEnabled(): Promise<boolean> {
 }
 
 async function cmd(c: string, timeoutMs = 5000): Promise<string> {
-  if (!writeChar) throw new Error('not connected');
+  if (!link) throw new Error('not connected');
   buffer = '';
-  const data = new TextEncoder().encode(c + '\r');
-  if (writeChar.properties.writeWithoutResponse) await writeChar.writeValueWithoutResponse(data);
-  else await writeChar.writeValue(data);
+  await link.write(c + '\r');
   const start = Date.now();
   while (!buffer.includes('>') && Date.now() - start < timeoutMs) await sleep(15);
   return buffer.replace(/[>\s]/g, ' ').trim();
@@ -120,34 +106,13 @@ function parseSoc(answer: string): number | null {
   return best == null ? null : Math.round(best * 10) / 10;
 }
 
-async function open(dev: any) {
-  device = dev;
-  set({ status: 'connecting', name: dev.name ?? 'OBD adapter', error: null });
-  const server = await dev.gatt.connect();
-  let notify: any = null;
-  let write: any = null;
-  for (const id of SERVICES) {
-    let service: any;
-    try {
-      service = await server.getPrimaryService(id);
-    } catch {
-      continue;
-    }
-    const chars = await service.getCharacteristics();
-    notify = chars.find((ch: any) => ch.properties.notify || ch.properties.indicate);
-    write = chars.find((ch: any) => ch.properties.write || ch.properties.writeWithoutResponse);
-    if (notify && write) break;
-  }
-  if (!notify || !write) throw new Error('This adapter is not supported yet.');
-  writeChar = write;
-  notify.addEventListener('characteristicvaluechanged', (e: any) => {
-    buffer += new TextDecoder().decode(e.target.value);
+async function open(next: ObdLink) {
+  link = next;
+  set({ status: 'connecting', name: next.name, error: null });
+  next.onData((text) => {
+    buffer += text;
   });
-  await notify.startNotifications();
-  if (!dev.__rpHooked) {
-    dev.__rpHooked = true;
-    dev.addEventListener('gattserverdisconnected', onDisconnected);
-  }
+  next.onDisconnect(onDisconnected);
 
   await cmd('ATZ', 8000);
   await cmd('ATE0');
@@ -170,9 +135,8 @@ async function open(dev: any) {
   if (soc == null) {
     set({ status: 'unsupported-car', error: 'This car does not report its battery % over OBD.' });
     wanted = false;
-    try {
-      dev.gatt.disconnect();
-    } catch {}
+    next.close();
+    link = null;
     return;
   }
   fails = 0;
@@ -221,9 +185,9 @@ async function poll() {
 }
 
 function onDisconnected() {
-  writeChar = null;
   if (pollTimer) clearTimeout(pollTimer);
   if (!wanted) {
+    link = null;
     set({ status: 'off' });
     return;
   }
@@ -232,12 +196,12 @@ function onDisconnected() {
 }
 
 async function retry() {
-  // The browser lets us reconnect to a device the user already picked, without asking again
-  for (let i = 0; i < 60 && wanted && state.status === 'lost' && device; i++) {
+  // reconnect to the same adapter without asking again
+  for (let i = 0; i < 60 && wanted && state.status === 'lost' && link; i++) {
     await sleep(5000);
-    if (!wanted || state.status !== 'lost') return;
+    if (!wanted || state.status !== 'lost' || !link) return;
     try {
-      await open(device);
+      await open(await link.reopen());
       return;
     } catch {
       set({ status: 'lost' });
@@ -245,35 +209,44 @@ async function retry() {
   }
 }
 
-/** Must be called from a tap: the browser shows its device picker. */
-export async function connectObd(): Promise<void> {
+/**
+ * Connect an adapter. On the web the browser shows its picker (must be called
+ * from a tap); in the native apps pass the id chosen from the app's own list.
+ */
+export async function connectObd(id?: string): Promise<void> {
   if (!obdSupported() || state.status === 'connecting' || state.status === 'connected') return;
   wanted = true;
+  set({ status: 'connecting', error: null });
   try {
-    const dev = await (navigator as any).bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: SERVICES,
-    });
-    await open(dev);
+    // native: no id means "the adapter used last time"
+    const next = ownPicker && !id ? await connectKnown() : await connectNew(id);
+    if (!next) {
+      wanted = false;
+      set({ status: 'off' });
+      return;
+    }
+    await open(next);
   } catch (e: any) {
     wanted = false;
-    const cancelled = e?.name === 'NotFoundError';
-    set({ status: 'off', error: cancelled ? null : (e?.message ?? 'Could not connect.') });
+    link = null;
+    set({ status: 'off', error: e?.message ?? 'Could not connect.' });
   }
 }
 
-/** Try to reconnect silently to an adapter the browser already knows (no picker). */
+/** Try to reconnect silently to the adapter used before (no picker). */
 export async function resumeObd(): Promise<void> {
   if (!(await obdEnabled()) || state.status !== 'off' || wanted) return;
-  const bt = (navigator as any).bluetooth;
-  if (!bt.getDevices) return;
+  wanted = true;
   try {
-    const devices = await bt.getDevices();
-    if (!devices.length) return;
-    wanted = true;
-    await open(devices[0]);
+    const next = await connectKnown();
+    if (!next) {
+      wanted = false;
+      return;
+    }
+    await open(next);
   } catch {
     wanted = false;
+    link = null;
     set({ status: 'off' });
   }
 }
@@ -281,10 +254,8 @@ export async function resumeObd(): Promise<void> {
 export function disconnectObd() {
   wanted = false;
   if (pollTimer) clearTimeout(pollTimer);
-  try {
-    device?.gatt?.disconnect();
-  } catch {}
-  writeChar = null;
+  link?.close();
+  link = null;
   set({ status: 'off', error: null });
 }
 

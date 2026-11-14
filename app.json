@@ -5,11 +5,11 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "rangepilot",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "infoPlist": {
         "UIBackgroundModes": [
           "location",
@@ -17,10 +17,14 @@
         ],
         "NSLocationWhenInUseUsageDescription": "Range Pilot uses your location to track distance and speed while driving.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Range Pilot needs background location so it can keep tracking your drive when the screen is off or you switch apps.",
-        "NSLocationAlwaysUsageDescription": "Range Pilot needs background location so it can keep tracking your drive when the screen is off or you switch apps."
+        "NSLocationAlwaysUsageDescription": "Range Pilot needs background location so it can keep tracking your drive when the screen is off or you switch apps.",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "icon": "./assets/images/icon.png",
-      "bundleIdentifier": "com.artcomp.rangepilot"
+      "bundleIdentifier": "com.artcomp.rangepilot",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "permissions": [
@@ -55,6 +59,16 @@
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": true,
+          "modes": [
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "Range Pilot connects to your OBD adapter to read the battery level from your car."
         }
       ]
     ],

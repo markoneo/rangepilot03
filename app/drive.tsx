@@ -440,7 +440,7 @@ export default function DriveScreen() {
               after 5 km the app learns your real consumption from it.
             </Text>
             {obdEnabled && (
-              <TouchableOpacity style={styles.obdReconnect} onPress={connectObd} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.obdReconnect} onPress={() => connectObd()} activeOpacity={0.8}>
                 <Text style={styles.obdReconnectText}>
                   {obd.status === 'connecting'
                     ? 'Connecting to OBD…'

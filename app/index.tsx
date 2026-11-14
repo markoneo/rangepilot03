@@ -32,7 +32,8 @@ import { getOutsideTempC, COLD_LIMIT_C, coldNoteSeenToday, markColdNoteSeen } fr
 import { ColdChip, COLD_BLUE } from '@/components/ColdChip';
 import { buildProfile, suggest, seasonOf, type Style } from '@/utils/learnedProfile';
 import { useObd } from '@/hooks/useObd';
-import { connectObd, disconnectObd } from '@/utils/obd';
+import { connectObd, disconnectObd, obdOwnPicker } from '@/utils/obd';
+import { ObdPicker } from '@/components/ObdPicker';
 import { Bluetooth } from 'lucide-react-native';
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -93,6 +94,7 @@ export default function HomeScreen() {
 
   // Live battery % from the car, for users with an OBD adapter
   const { obd, supported: obdSupported, enabled: obdEnabled, live: obdLive } = useObd();
+  const [obdPicker, setObdPicker] = useState(false);
   useEffect(() => {
     if (obdLive && obd.soc != null) setBattery(obd.soc);
   }, [obdLive, obd.soc]);
@@ -528,7 +530,11 @@ export default function HomeScreen() {
           {obdSupported && (
             <TouchableOpacity
               style={[styles.row, styles.rowDivider]}
-              onPress={() => (obd.status === 'off' || obd.status === 'unsupported-car' ? connectObd() : undefined)}
+              onPress={() => {
+                if (obd.status !== 'off' && obd.status !== 'unsupported-car') return;
+                if (obdOwnPicker) setObdPicker(true);
+                else connectObd();
+              }}
               disabled={obd.status === 'connecting'}
               activeOpacity={0.8}
             >
@@ -561,6 +567,8 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        <ObdPicker visible={obdPicker} onClose={() => setObdPicker(false)} />
 
         {/* This week */}
         {week.count > 0 && (
