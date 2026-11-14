@@ -141,6 +141,8 @@ export default function ListenScreen() {
       let overflow = 0;
       for (let i = 0; i < 8 && !io.current!.stop; i++) {
         const raw = await listen(1200);
+        // show exactly what the adapter returned, so silence can be told apart from a format we don't parse
+        if (i < 2) log(`raw ${i + 1}: ${raw.length} lines${raw.length ? ' · ' + raw.slice(0, 6).join(' | ') : ''}`);
         if (raw.some((l) => l.includes('BUFFER FULL'))) overflow++;
         frames += collect(raw, all);
       }
