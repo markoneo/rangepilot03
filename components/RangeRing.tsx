@@ -55,7 +55,7 @@ export function RangeRing({
   const pct = Math.max(0, Math.min(100, batteryPct));
   const dash = (c * pct) / 100;
   const color = ringColor(usablePct);
-  const light = mix(color, '#FFFFFF', 0.62);
+  const light = mix(color, '#FFFFFF', 0.8);
   const low = usablePct < 10;
   const kmText = String(Math.round(km));
 
@@ -79,7 +79,7 @@ export function RangeRing({
     const a = Animated.loop(
       Animated.timing(spin, {
         toValue: 1,
-        duration: low ? 4000 : 7000,
+        duration: low ? 3200 : 5500,
         easing: Easing.linear,
         useNativeDriver: native,
       })
@@ -100,7 +100,7 @@ export function RangeRing({
   }, [animate, low]);
 
   const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.1, 0.32] });
+  const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.14, 0.55] });
   const top = `rotate(-90 ${h} ${h})`;
   // the part of the ring that is not filled, drawn over the travelling light
   const cap = STROKE / 2;
@@ -121,7 +121,7 @@ export function RangeRing({
             r={r}
             fill="none"
             stroke={color}
-            strokeWidth={STROKE + 12}
+            strokeWidth={STROKE + 16}
             strokeLinecap="round"
             strokeDasharray={[dash, c]}
             transform={top}
@@ -151,7 +151,7 @@ export function RangeRing({
       {animate && (
         <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ rotate }] }]}>
           <Svg width={size} height={size}>
-            {[0.16, 0.11, 0.06].map((len, i) => (
+            {[0.24, 0.17, 0.1, 0.045].map((len, i) => (
               <Circle
                 key={len}
                 cx={h}
@@ -159,11 +159,11 @@ export function RangeRing({
                 r={r}
                 fill="none"
                 stroke={light}
-                strokeOpacity={0.22 + i * 0.14}
+                strokeOpacity={0.28 + i * 0.2}
                 strokeWidth={STROKE}
                 strokeLinecap="round"
                 strokeDasharray={[c * len, c]}
-                strokeDashoffset={-c * (0.16 - len)}
+                strokeDashoffset={-c * (0.24 - len)}
                 transform={top}
               />
             ))}
