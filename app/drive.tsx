@@ -417,13 +417,13 @@ export default function DriveScreen() {
             moving={!paused}
           />
           {/* speed and distance sit beside the dial */}
-          <View style={[styles.flank, { left: 0 }]} pointerEvents="none">
+          <View style={[styles.flank, { left: -10 }]} pointerEvents="none">
             <Text style={[styles.flankValue, { color: paused ? C.text : speedColor(snap.speedKmh) }]}>
               {paused ? '–' : String(Math.round(snap.speedKmh))}
             </Text>
             <Text style={styles.flankLabel}>km/h</Text>
           </View>
-          <View style={[styles.flank, { right: 0 }]} pointerEvents="none">
+          <View style={[styles.flank, { right: -10 }]} pointerEvents="none">
             <Text style={styles.flankValue}>
               {snap.distanceKm >= 100 ? snap.distanceKm.toFixed(0) : snap.distanceKm.toFixed(1)}
             </Text>
@@ -1001,9 +1001,9 @@ const styles = StyleSheet.create({
   },
   heroTop: { flexDirection: 'row', alignItems: 'center' },
   coldSpot: { position: 'absolute', top: 0, right: 0 },
-  flank: { position: 'absolute', top: 50, width: 70, alignItems: 'center' },
-  flankValue: { fontSize: 26, lineHeight: 30, fontFamily: F.display, color: C.text, letterSpacing: -0.8 },
-  flankLabel: { fontSize: 12, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
+  flank: { position: 'absolute', top: 40, width: 84, alignItems: 'center' },
+  flankValue: { fontSize: 34, lineHeight: 38, fontFamily: F.display, color: C.text, letterSpacing: -1.4 },
+  flankLabel: { fontSize: 13, fontFamily: F.semibold, color: C.textDim, marginTop: 0 },
   perTen: {
     flexDirection: 'row',
     alignItems: 'baseline',
