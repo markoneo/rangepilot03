@@ -57,6 +57,7 @@ export function RangeRing({
   const color = ringColor(usablePct);
   const light = mix(color, '#FFFFFF', 0.62);
   const low = usablePct < 10;
+  const kmText = String(Math.round(km));
 
   const [calm, setCalm] = useState(false);
   useEffect(() => {
@@ -187,8 +188,16 @@ export function RangeRing({
 
       <View style={[StyleSheet.absoluteFill, s.center]}>
         <Text style={s.label}>{label}</Text>
-        <Text style={[s.km, usablePct <= 0 ? { color: C.red } : null]} numberOfLines={1} adjustsFontSizeToFit>
-          {Math.round(km)}
+        {/* fixed sizes: auto-shrinking text collapses to nothing on iPhone here */}
+        <Text
+          style={[
+            s.km,
+            kmText.length >= 4 ? { fontSize: 52, lineHeight: 56, letterSpacing: -2 } : null,
+            usablePct <= 0 ? { color: C.red } : null,
+          ]}
+          numberOfLines={1}
+        >
+          {kmText}
         </Text>
         <Text style={s.unit}>km</Text>
         {sub ? <Text style={[s.sub, { color }]}>{sub}</Text> : null}
@@ -198,7 +207,7 @@ export function RangeRing({
 }
 
 const s = StyleSheet.create({
-  center: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 34 },
+  center: { alignItems: 'center', justifyContent: 'center' },
   label: { fontSize: 12, fontFamily: F.semibold, color: C.textDim, letterSpacing: 0.6, textTransform: 'uppercase' },
   km: { fontSize: 68, lineHeight: 70, fontFamily: F.display, color: C.text, letterSpacing: -2.5 },
   unit: { fontSize: 15, fontFamily: F.semibold, color: C.textDim, marginTop: -2 },

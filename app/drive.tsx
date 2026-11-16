@@ -416,6 +416,19 @@ export default function DriveScreen() {
             sub={snap.reservePercent > 0 ? `to ${snap.reservePercent}% reserve` : 'to empty'}
             moving={!paused}
           />
+          {/* speed and distance sit beside the dial */}
+          <View style={[styles.flank, { left: 0 }]} pointerEvents="none">
+            <Text style={[styles.flankValue, { color: paused ? C.text : speedColor(snap.speedKmh) }]}>
+              {paused ? '–' : String(Math.round(snap.speedKmh))}
+            </Text>
+            <Text style={styles.flankLabel}>km/h</Text>
+          </View>
+          <View style={[styles.flank, { right: 0 }]} pointerEvents="none">
+            <Text style={styles.flankValue}>
+              {snap.distanceKm >= 100 ? snap.distanceKm.toFixed(0) : snap.distanceKm.toFixed(1)}
+            </Text>
+            <Text style={styles.flankLabel}>km driven</Text>
+          </View>
           {cold && (
             <View style={styles.coldSpot}>
               <ColdChip tempC={snap.outsideTempC!} onPress={() => setColdOpen(true)} />
@@ -534,34 +547,9 @@ export default function DriveScreen() {
         </View>
         {obd.error && obd.status !== 'connected' ? <Text style={styles.obdError}>{obd.error}</Text> : null}
 
-        {/* Live stats */}
-        <View style={styles.strip}>
-          <View style={styles.stripCell}>
-            <Text style={[styles.stripValue, { color: paused ? C.text : speedColor(snap.speedKmh) }]}>
-              {paused ? '–' : String(Math.round(snap.speedKmh))}
-            </Text>
-            <Text style={styles.stripLabel}>km/h</Text>
-          </View>
-          <View style={[styles.stripCell, styles.stripDivider]}>
-            <Text style={styles.stripValue}>{snap.distanceKm.toFixed(1)}</Text>
-            <Text style={styles.stripLabel}>km driven</Text>
-          </View>
-        </View>
-        <View style={styles.strip}>
-          <View style={styles.stripCell}>
-            <Text style={styles.stripValue}>{kmPer10.toFixed(0)}</Text>
-            <Text style={styles.stripLabel}>km per 10%</Text>
-          </View>
-          <View style={[styles.stripCell, styles.stripDivider]}>
-            <Text style={styles.stripValue}>{kwhLeft.toFixed(1)}</Text>
-            <Text style={styles.stripLabel}>kWh usable</Text>
-          </View>
-          {snap.outsideTempC != null && (
-            <View style={[styles.stripCell, styles.stripDivider]}>
-              <Text style={styles.stripValue}>{Math.round(snap.outsideTempC)}°</Text>
-              <Text style={styles.stripLabel}>outside</Text>
-            </View>
-          )}
+        <View style={styles.perTen}>
+          <Text style={styles.perTenValue}>{kmPer10.toFixed(0)} km</Text>
+          <Text style={styles.perTenLabel}>per 10% battery</Text>
         </View>
         {snap.estimatedKm >= 0.1 && (
           <Text style={styles.estNote}>
@@ -1013,6 +1001,23 @@ const styles = StyleSheet.create({
   },
   heroTop: { flexDirection: 'row', alignItems: 'center' },
   coldSpot: { position: 'absolute', top: 0, right: 0 },
+  flank: { position: 'absolute', top: 50, width: 70, alignItems: 'center' },
+  flankValue: { fontSize: 26, lineHeight: 30, fontFamily: F.display, color: C.text, letterSpacing: -0.8 },
+  flankLabel: { fontSize: 12, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
+  perTen: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 18,
+    paddingVertical: 12,
+    marginTop: 12,
+  },
+  perTenValue: { fontSize: 22, lineHeight: 26, fontFamily: F.display, color: C.text, letterSpacing: -0.6 },
+  perTenLabel: { fontSize: 13, fontFamily: F.medium, color: C.textDim },
   seg: {
     flexDirection: 'row',
     gap: 4,
