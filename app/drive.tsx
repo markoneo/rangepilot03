@@ -15,7 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { keepScreenOn, allowScreenOff } from '@/utils/screenAwake';
-import { ChevronDown, Pause, Play, Flag, Zap, MapPinOff, MapPin, X, Sparkles, Search, Snowflake } from 'lucide-react-native';
+import { ChevronDown, Pause, Play, Flag, Zap, MapPinOff, MapPin, X, Sparkles, Search, Snowflake, Power, Minus, Plus } from 'lucide-react-native';
 import { COLD_LIMIT_C, coldNoteSeenToday, markColdNoteSeen } from '@/utils/weather';
 import { ColdChip, COLD_BLUE } from '@/components/ColdChip';
 import { ChargeSheet } from '@/components/ChargeSheet';
@@ -26,7 +26,9 @@ import { ArrivalCard, DestinationSheet } from '@/components/destination';
 import { computeRoute, routeElevation, estimateArrival, type Place } from '@/utils/maps';
 import { destinationRemainingKm, CHARGE_JUMP_PCT } from '@/utils/trackCore';
 import { useObd } from '@/hooks/useObd';
-import { connectObd } from '@/utils/obd';
+import { connectObd, disconnectObd, obdOwnPicker } from '@/utils/obd';
+import { ObdPicker } from '@/components/ObdPicker';
+import { RangeRing } from '@/components/RangeRing';
 import { getCurrentPosition, watchForeground } from '@/utils/geolocation';
 import { createMovingDetector } from '@/utils/movingDetector';
 import { readJSON, kv } from '@/utils/kv';
@@ -42,7 +44,7 @@ import { C, F, batteryColor } from '@/constants/theme';
 import { Card, Chips, Label, NumberSheet, Stepper, Toast, tap } from '@/components/ui';
 
 const KEEP_AWAKE_TAG = 'range-pilot-drive';
-const RESERVE_OPTIONS = [0, 5, 10, 15, 20];
+const RESERVE_OPTIONS = [10, 20, 0];
 
 function useTripSnapshot(): Snapshot | null {
   const [snap, setSnap] = useState<Snapshot | null>(() => Trip.getSnapshot());
@@ -73,6 +75,7 @@ export default function DriveScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
   const [bgWarning, setBgWarning] = useState<'web' | 'native' | null>(null);
   const [destSheet, setDestSheet] = useState(false);
+  const [obdPicker, setObdPicker] = useState(false);
   const [pendingBattery, setPendingBattery] = useState<number | null>(null);
   const pendingRef = useRef<number | null>(null);
   const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -350,6 +353,26 @@ export default function DriveScreen() {
   };
   const shownBattery = pendingBattery ?? snap.battery;
 
+  // The round button switches the OBD connection on and off.
+  const obdTone =
+    obd.status === 'connected'
+      ? { fg: C.green, ring: C.green, label: 'OBD on' }
+      : obd.status === 'connecting'
+        ? { fg: C.amber, ring: C.amber, label: 'Connecting…' }
+        : obd.status === 'lost'
+          ? { fg: C.amber, ring: C.amber, label: 'Reconnecting…' }
+          : { fg: C.textDim, ring: C.borderHi, label: 'OBD off' };
+  const onObdButton = () => {
+    tap();
+    if (obd.status === 'off' || obd.status === 'unsupported-car') {
+      // an adapter used before reconnects by itself; otherwise choose one
+      if (obdEnabled || !obdOwnPicker) connectObd();
+      else setObdPicker(true);
+    } else {
+      disconnectObd();
+    }
+  };
+
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       {/* Header */}
@@ -383,137 +406,162 @@ export default function DriveScreen() {
         showsVerticalScrollIndicator={false}
       >
 
-        {/* Range */}
-        <View style={styles.heroTop}>
-          <Text style={styles.heroLabel}>
-            {snap.reservePercent > 0 ? `Range to ${snap.reservePercent}%` : 'Range left'}
-          </Text>
-          {cold && <ColdChip tempC={snap.outsideTempC!} onPress={() => setColdOpen(true)} />}
-        </View>
-        <Text style={[styles.heroValue, { color: snap.usableBattery <= 0 ? C.red : C.text }]}>
-          {Math.round(snap.rangeKm)}
-          <Text style={styles.heroUnit}> km</Text>
-        </Text>
-
-        {/* Battery — match your car */}
-        {obdLive ? (
-          <View style={styles.liveBatt}>
-            <Text style={[styles.liveBattValue, { color: bColor }]}>{snap.battery.toFixed(1)}%</Text>
-            <View style={styles.liveRow}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>live from your car</Text>
-            </View>
-          </View>
-        ) : (
-          <View style={{ marginTop: 14 }}>
-            <Stepper
-              value={`${shownBattery.toFixed(1)}%`}
-              color={batteryColor(shownBattery)}
-              onMinus={() => stepBattery(-1)}
-              onPlus={() => stepBattery(1)}
-              onMinusLong={() => stepBattery(-5)}
-              onPlusLong={() => stepBattery(5)}
-              onPressValue={() => setBatterySheet(true)}
-            />
-          </View>
-        )}
-        <View style={styles.battTrack}>
-          <View
-            style={[
-              styles.battFill,
-              { width: `${Math.max(0, Math.min(100, snap.battery))}%`, backgroundColor: bColor },
-            ]}
+        {/* Range dial */}
+        <View>
+          <RangeRing
+            km={snap.rangeKm}
+            batteryPct={snap.battery}
+            usablePct={snap.usableBattery}
+            label="Range left"
+            sub={snap.reservePercent > 0 ? `to ${snap.reservePercent}% reserve` : 'to empty'}
+            moving={!paused}
           />
-          {snap.reservePercent > 0 && (
-            <View style={[styles.reserveMark, { left: `${snap.reservePercent}%` }]} />
+          {cold && (
+            <View style={styles.coldSpot}>
+              <ColdChip tempC={snap.outsideTempC!} onPress={() => setColdOpen(true)} />
+            </View>
           )}
         </View>
-        {obdLive ? (
-          <Text style={styles.hint}>
-            {kwhLeft.toFixed(1)} kWh usable. Battery % and consumption come from your car, hills and
-            regeneration included.
-          </Text>
-        ) : (
-          <>
-            <Text style={styles.hint}>
-              Match your car · {kwhLeft.toFixed(1)} kWh usable. Correct it whenever your car shows a different %;
-              after 5 km the app learns your real consumption from it.
-            </Text>
-            {obdEnabled && (
-              <TouchableOpacity style={styles.obdReconnect} onPress={() => connectObd()} activeOpacity={0.8}>
-                <Text style={styles.obdReconnectText}>
-                  {obd.status === 'connecting'
-                    ? 'Connecting to OBD…'
-                    : obd.status === 'lost'
-                      ? 'OBD connection lost — reconnecting…'
-                      : 'OBD not connected — tap to connect'}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </>
-        )}
 
-        {/* Quick facts: km per battery %, consumption */}
-        <View style={styles.facts}>
-          <View style={styles.fact}>
-            <Text style={styles.factValue}>{kmPer10.toFixed(0)} km</Text>
-            <Text style={styles.factLabel}>per 10% battery</Text>
-          </View>
-          <View style={[styles.fact, styles.factDivider]}>
-            <Text style={styles.factValue}>{(kmPer10 / 10).toFixed(1)} km</Text>
-            <Text style={styles.factLabel}>per 1%</Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.fact, styles.factDivider]}
-            onPress={() => setConsSheet(true)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.factValue, { color: bColor }]}>
-              {(obdLive && snap.recentConsumption != null ? snap.recentConsumption : snap.consumption).toFixed(1)}
-            </Text>
-            {obdLive ? (
-              <>
-                <Text style={styles.factLabel} numberOfLines={1}>
-                  kWh/100 · {snap.recentConsumption != null ? 'from car' : 'preset'}
-                </Text>
-                <Text style={styles.factSub}>
-                  {snap.recentConsumption != null ? `last ${snap.recentKm} km` : 'measuring…'}
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.factLabel} numberOfLines={1}>
-                  kWh/100 ·{' '}
-                  {snap.learnConfidence === 'none'
-                    ? 'preset'
-                    : snap.learnConfidence === 'low'
-                      ? 'learning'
-                      : snap.learnConfidence === 'medium'
-                        ? 'learned'
-                        : 'learned ✓'}
-                </Text>
-                <Text style={styles.factSub}>at ~{snap.speedBasisKmh} km/h</Text>
-              </>
-            )}
-          </TouchableOpacity>
+        {/* Reserve: range to 10 %, to 20 %, or to empty */}
+        <View style={styles.seg} accessibilityRole="radiogroup">
+          {RESERVE_OPTIONS.map((v) => {
+            const on = snap.reservePercent === v;
+            return (
+              <TouchableOpacity
+                key={v}
+                style={[styles.segBtn, on && styles.segBtnOn]}
+                onPress={() => {
+                  tap();
+                  Trip.setReserve(v);
+                }}
+                activeOpacity={0.8}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={v === 0 ? 'No reserve' : `Reserve ${v} percent`}
+              >
+                <Text style={[styles.segText, on && styles.segTextOn]}>{v === 0 ? 'Off' : `${v}%`}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
+        {/* Battery · OBD on/off · consumption */}
+        <View style={styles.trio}>
+          <TouchableOpacity
+            style={styles.tile}
+            onPress={() => setBatterySheet(true)}
+            disabled={obdLive}
+            activeOpacity={0.8}
+            accessibilityLabel={`Battery ${shownBattery.toFixed(1)} percent${obdLive ? ', live from your car' : ', tap to set'}`}
+          >
+            <Text style={styles.tileTitle}>Battery</Text>
+            <BatteryGauge pct={shownBattery} />
+            {obdLive ? (
+              <Text style={[styles.tileNote, { color: C.green }]} numberOfLines={1}>
+                Live from car
+              </Text>
+            ) : (
+              <View style={styles.pm}>
+                <TouchableOpacity
+                  style={styles.pmBtn}
+                  onPress={() => stepBattery(-1)}
+                  onLongPress={() => stepBattery(-5)}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Battery minus one percent"
+                >
+                  <Minus size={18} color={C.text} strokeWidth={2.6} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pmBtn}
+                  onPress={() => stepBattery(1)}
+                  onLongPress={() => stepBattery(5)}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Battery plus one percent"
+                >
+                  <Plus size={18} color={C.text} strokeWidth={2.6} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {obdState.supported && (
+            <View style={styles.obdCol}>
+              <TouchableOpacity
+                style={[styles.power, { borderColor: obdTone.ring }]}
+                onPress={onObdButton}
+                activeOpacity={0.8}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: obd.status === 'connected' }}
+                accessibilityLabel="OBD connection"
+              >
+                <Power size={34} color={obdTone.fg} strokeWidth={2.4} />
+              </TouchableOpacity>
+              <Text style={[styles.obdLabel, { color: obdTone.fg }]} numberOfLines={2}>
+                {obdTone.label}
+              </Text>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.tile}
+            onPress={() => setConsSheet(true)}
+            activeOpacity={0.8}
+            accessibilityLabel="Consumption, tap to change"
+          >
+            <Text style={styles.tileTitle}>Consumption</Text>
+            <View>
+              <Text style={styles.consBig} numberOfLines={1} adjustsFontSizeToFit>
+                {(obdLive && snap.recentConsumption != null ? snap.recentConsumption : snap.consumption).toFixed(1)}
+              </Text>
+              <Text style={styles.tileUnit}>kWh/100 km</Text>
+            </View>
+            <Text
+              style={[styles.tileNote, { color: obdLive && snap.recentConsumption != null ? C.green : C.textDim }]}
+              numberOfLines={1}
+            >
+              {obdLive
+                ? snap.recentConsumption != null
+                  ? 'from car'
+                  : 'measuring…'
+                : snap.learnConfidence === 'none'
+                  ? 'preset'
+                  : snap.learnConfidence === 'low'
+                    ? 'learning'
+                    : 'learned'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {obd.error && obd.status !== 'connected' ? <Text style={styles.obdError}>{obd.error}</Text> : null}
+
         {/* Live stats */}
-        <View style={[styles.facts, { borderTopWidth: 0, marginTop: 0, marginBottom: 14 }]}>
-          <View style={styles.fact}>
-            <Text style={styles.factValue}>{snap.distanceKm.toFixed(1)}</Text>
-            <Text style={styles.factLabel}>km driven</Text>
-          </View>
-          <View style={[styles.fact, styles.factDivider]}>
-            <Text style={styles.factValue}>{formatDuration(snap.elapsedSec)}</Text>
-            <Text style={styles.factLabel}>time</Text>
-          </View>
-          <View style={[styles.fact, styles.factDivider]}>
-            <Text style={[styles.factValue, { color: paused ? C.text : speedColor(snap.speedKmh) }]}>
+        <View style={styles.strip}>
+          <View style={styles.stripCell}>
+            <Text style={[styles.stripValue, { color: paused ? C.text : speedColor(snap.speedKmh) }]}>
               {paused ? '–' : String(Math.round(snap.speedKmh))}
             </Text>
-            <Text style={styles.factLabel}>km/h</Text>
+            <Text style={styles.stripLabel}>km/h</Text>
           </View>
+          <View style={[styles.stripCell, styles.stripDivider]}>
+            <Text style={styles.stripValue}>{snap.distanceKm.toFixed(1)}</Text>
+            <Text style={styles.stripLabel}>km driven</Text>
+          </View>
+        </View>
+        <View style={styles.strip}>
+          <View style={styles.stripCell}>
+            <Text style={styles.stripValue}>{kmPer10.toFixed(0)}</Text>
+            <Text style={styles.stripLabel}>km per 10%</Text>
+          </View>
+          <View style={[styles.stripCell, styles.stripDivider]}>
+            <Text style={styles.stripValue}>{kwhLeft.toFixed(1)}</Text>
+            <Text style={styles.stripLabel}>kWh usable</Text>
+          </View>
+          {snap.outsideTempC != null && (
+            <View style={[styles.stripCell, styles.stripDivider]}>
+              <Text style={styles.stripValue}>{Math.round(snap.outsideTempC)}°</Text>
+              <Text style={styles.stripLabel}>outside</Text>
+            </View>
+          )}
         </View>
         {snap.estimatedKm >= 0.1 && (
           <Text style={styles.estNote}>
@@ -564,17 +612,6 @@ export default function DriveScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Reserve */}
-        <View style={styles.reserveRow}>
-          <Text style={styles.reserveLabel}>Arrive with at least</Text>
-          <View>
-            <Chips
-              options={RESERVE_OPTIONS.map((v) => ({ label: v === 0 ? 'Off' : `${v}%`, value: v }))}
-              value={RESERVE_OPTIONS.includes(snap.reservePercent) ? snap.reservePercent : null}
-              onChange={(v) => Trip.setReserve(v)}
-            />
-          </View>
-        </View>
       </ScrollView>
 
       {/* Bottom controls */}
@@ -741,6 +778,7 @@ export default function DriveScreen() {
           routeTo(p);
         }}
       />
+      {obdOwnPicker && <ObdPicker visible={obdPicker} onClose={() => setObdPicker(false)} />}
       <NumberSheet
         visible={batterySheet}
         title="Battery level"
@@ -791,6 +829,40 @@ function speedColor(kmh: number) {
   if (kmh > 110) return C.red;
   if (kmh >= 90) return C.amber;
   return C.green;
+}
+
+/** Battery drawing that fills with the charge level; the % is always readable. */
+function BatteryGauge({ pct }: { pct: number }) {
+  const p = Math.max(0, Math.min(100, pct));
+  const color = batteryColor(p);
+  const [h, setH] = useState(0);
+  // the number sits inside the fill when it fits, above the fill when the
+  // battery is low, and on a dark plate when it would straddle the edge
+  const NUM = 58;
+  const fillPx = (h * p) / 100;
+  const place = h === 0 || fillPx >= NUM ? 'fill' : h - fillPx >= NUM ? 'empty' : 'middle';
+  const ink = place === 'fill' ? C.onAccent : C.text;
+  return (
+    <View style={styles.gauge}>
+      <View style={styles.gaugeCap} />
+      <View style={styles.gaugeBody} onLayout={(e) => setH(e.nativeEvent.layout.height)}>
+        <View style={[styles.gaugeFill, { height: `${p}%`, backgroundColor: color }]} />
+        <View
+          style={[
+            styles.gaugeNum,
+            place === 'fill'
+              ? { bottom: Math.max(2, (fillPx - NUM) / 2) }
+              : place === 'empty'
+                ? { top: Math.max(2, (h - fillPx - NUM) / 2) }
+                : styles.gaugeNumMid,
+          ]}
+        >
+          <Text style={[styles.gaugeValue, { color: ink }]}>{p.toFixed(0)}</Text>
+          <Text style={[styles.gaugePct, { color: ink }]}>%</Text>
+        </View>
+      </View>
+    </View>
+  );
 }
 
 function Stat({ value, unit, label, color }: { value: string; unit?: string; label: string; color?: string }) {
@@ -916,7 +988,7 @@ const styles = StyleSheet.create({
   },
   gpsDot: { width: 7, height: 7, borderRadius: 4 },
   gpsText: { fontSize: 12, fontFamily: F.semibold },
-  scroll: { paddingHorizontal: 22, paddingTop: 10 },
+  scroll: { paddingHorizontal: 18, paddingTop: 6 },
   warn: {
     flexDirection: 'row',
     gap: 10,
@@ -940,6 +1012,87 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   heroTop: { flexDirection: 'row', alignItems: 'center' },
+  coldSpot: { position: 'absolute', top: 0, right: 0 },
+  seg: {
+    flexDirection: 'row',
+    gap: 4,
+    padding: 3,
+    marginTop: 12,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+  },
+  segBtn: { flex: 1, height: 44, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  segBtnOn: { backgroundColor: C.green },
+  segText: { fontSize: 14, fontFamily: F.bold, color: C.text },
+  segTextOn: { color: C.onAccent },
+  trio: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
+  tile: {
+    flex: 1,
+    height: 196,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 20,
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  tileTitle: { fontSize: 13, fontFamily: F.semibold, color: C.text },
+  tileNote: { fontSize: 12, fontFamily: F.semibold },
+  tileUnit: { fontSize: 12, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
+  consBig: { fontSize: 38, lineHeight: 42, fontFamily: F.display, color: C.text, letterSpacing: -1.4 },
+  pm: { flexDirection: 'row', gap: 8 },
+  pmBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: C.cardHi,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  obdCol: { width: 100, alignItems: 'center', gap: 8 },
+  power: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    borderWidth: 8,
+    backgroundColor: C.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  obdLabel: { fontSize: 12, fontFamily: F.bold, textAlign: 'center' },
+  obdError: { fontSize: 12, fontFamily: F.medium, color: C.amber, textAlign: 'center', marginTop: 8 },
+  gauge: { flex: 1, alignItems: 'center', marginVertical: 8 },
+  gaugeCap: { width: 34, height: 7, backgroundColor: C.borderHi, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+  gaugeBody: { flex: 1, alignSelf: 'stretch', backgroundColor: C.cardHi, borderRadius: 16, overflow: 'hidden' },
+  gaugeFill: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  gaugeNum: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
+  gaugeNumMid: {
+    top: 4,
+    bottom: 4,
+    left: 10,
+    right: 10,
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: 'rgba(11,14,17,0.78)',
+  },
+  gaugeValue: { fontSize: 38, lineHeight: 40, fontFamily: F.display, letterSpacing: -1.4 },
+  gaugePct: { fontSize: 13, lineHeight: 14, fontFamily: F.bold },
+  strip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 18,
+    paddingVertical: 12,
+    marginTop: 12,
+  },
+  stripCell: { flex: 1, alignItems: 'center' },
+  stripDivider: { borderLeftWidth: 1, borderLeftColor: C.border },
+  stripValue: { fontSize: 24, lineHeight: 28, fontFamily: F.display, color: C.text, letterSpacing: -0.6 },
+  stripLabel: { fontSize: 12, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
   heroRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   consBox: {
     alignItems: 'center',
@@ -1049,6 +1202,7 @@ const styles = StyleSheet.create({
   heroMetaText: { fontSize: 13, fontFamily: F.medium, color: C.textDim },
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 6 },
   destBtn: {
+    marginTop: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
