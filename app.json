@@ -13,7 +13,8 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "location",
-          "fetch"
+          "fetch",
+          "bluetooth-central"
         ],
         "NSLocationWhenInUseUsageDescription": "Range Pilot uses your location to track distance and speed while driving.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Range Pilot needs background location so it can keep tracking your drive when the screen is off or you switch apps.",

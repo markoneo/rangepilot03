@@ -223,6 +223,27 @@ function startWatching() {
   });
 }
 
+/**
+ * The phone can stop the live position stream while the app is in the
+ * background without telling the app. When a drive is running and no position
+ * has come in for a while, start the stream again (only with the app on screen).
+ */
+const STALE_FIX_MS = 15000;
+let lastRestartAt = 0;
+function reviveWatching() {
+  if (!state || state.phase !== 'driving') return;
+  if (RNAppState.currentState !== 'active') return;
+  if (!watcher) {
+    startWatching();
+    return;
+  }
+  const now = Date.now();
+  const lastFixAt = Math.max(state.lastAnyFixAt || 0, state.lastSignalAt || 0, state.resumedAt || 0);
+  if (now - lastFixAt < STALE_FIX_MS || now - lastRestartAt < STALE_FIX_MS) return;
+  lastRestartAt = now;
+  watcher.restart?.();
+}
+
 function stopWatching() {
   watcher?.remove();
   watcher = null;
@@ -416,9 +437,13 @@ RNAppState.addEventListener('change', (st) => {
   if (st === 'background' || st === 'inactive') {
     run(() => persist(true));
   } else if (st === 'active') {
+    reviveWatching();
     notify();
   }
 });
+
+// Safety net while a drive is running: no position for 15 s → restart the stream.
+if (Platform.OS !== 'web') setInterval(reviveWatching, 10000);
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {

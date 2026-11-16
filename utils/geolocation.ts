@@ -17,6 +17,11 @@ export type GeoCoords = {
 
 export type GeoWatcher = {
   remove: () => void;
+  /**
+   * Start the live position stream again (the phone can silently stop it while
+   * the app is in the background). Only call while the app is on screen.
+   */
+  restart?: () => void;
 };
 
 export const BACKGROUND_LOCATION_TASK = 'range-pilot-background-location';
@@ -173,12 +178,18 @@ export function startLocationUpdates(
 
   let removed = false;
   let nativeSub: { remove: () => void } | null = null;
+  let starting = false;
 
-  (async () => {
+  const start = async () => {
+    if (starting || removed) return;
+    starting = true;
     try {
       const Location = await import('expo-location');
 
-      nativeSub = await Location.watchPositionAsync(
+      const old = nativeSub;
+      nativeSub = null;
+      old?.remove();
+      const sub = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
           timeInterval: 1000,
@@ -187,13 +198,21 @@ export function startLocationUpdates(
         (pos) => onFix(fromExpo(pos))
       );
       if (removed) {
-        nativeSub?.remove();
-        nativeSub = null;
+        sub.remove();
         return;
       }
+      nativeSub = sub;
 
-      const bg = await Location.getBackgroundPermissionsAsync();
-      if (bg.status === 'granted') {
+      // Android needs "Allow all the time" for the background task. On iPhone
+      // "While using the app" is enough when tracking starts on screen: iOS
+      // then keeps the app running in the background (blue location indicator),
+      // which also keeps the OBD connection alive.
+      let allowed = Platform.OS === 'ios';
+      if (!allowed) {
+        const bg = await Location.getBackgroundPermissionsAsync();
+        allowed = bg.status === 'granted';
+      }
+      if (allowed) {
         try {
           const TaskManager = require('expo-task-manager');
           if (!TaskManager.isTaskDefined?.(BACKGROUND_LOCATION_TASK)) return;
@@ -221,8 +240,11 @@ export function startLocationUpdates(
       }
     } catch (e) {
       onError?.(e);
+    } finally {
+      starting = false;
     }
-  })();
+  };
+  start();
 
   return {
     remove: () => {
@@ -230,6 +252,9 @@ export function startLocationUpdates(
       nativeSub?.remove();
       nativeSub = null;
       stopBackgroundUpdates();
+    },
+    restart: () => {
+      start();
     },
   };
 }

@@ -1,3 +1,4 @@
+import { AppState } from 'react-native';
 import { kv } from './kv';
 import * as Trip from './tripTracker';
 import { connectKnown, connectNew, ownPicker, scanAdapters, transportSupported, type ObdLink } from './obdTransport';
@@ -44,6 +45,8 @@ let wanted = false; // the user asked to be connected
 let busy = false;
 let fails = 0;
 let idleTicks = 0;
+let writeFails = 0;
+let retrying = false;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -106,7 +109,7 @@ function parseSoc(answer: string): number | null {
   return best == null ? null : Math.round(best * 10) / 10;
 }
 
-async function open(next: ObdLink) {
+async function open(next: ObdLink, again = false) {
   link = next;
   set({ status: 'connecting', name: next.name, error: null });
   next.onData((text) => {
@@ -132,6 +135,8 @@ async function open(next: ObdLink) {
   const unit = socUnit(first);
   if (unit) await cmd(`ATSH${unit}`);
   await cmd('ATH0');
+  // reconnecting to a car that answered before: one silent try is not a verdict
+  if (soc == null && again) throw new Error('no answer');
   if (soc == null) {
     set({ status: 'unsupported-car', error: 'This car does not report its battery % over OBD.' });
     wanted = false;
@@ -167,21 +172,34 @@ async function poll() {
     return;
   }
   busy = true;
+  let dead = false;
   try {
     const soc = parseSoc(await cmd('015B', 4000));
     if (soc != null) {
       fails = 0;
+      writeFails = 0;
       gotSoc(soc);
     } else if (++fails >= 6) {
       // car asleep / ignition off: keep the link, show the last value as stale
       set({ error: 'The car stopped answering (switched off?).' });
     }
   } catch {
+    // the adapter can't be written to: the link is gone even if the phone did not say so
     fails++;
+    dead = ++writeFails >= 2;
   } finally {
     busy = false;
-    if (wanted && state.status === 'connected') schedule();
+    if (dead) dropLink();
+    else if (wanted && state.status === 'connected') schedule();
   }
+}
+
+/** The link is dead without a disconnect event: close it and connect again. */
+function dropLink() {
+  writeFails = 0;
+  if (pollTimer) clearTimeout(pollTimer);
+  set({ status: 'lost' });
+  retry();
 }
 
 function onDisconnected() {
@@ -195,19 +213,42 @@ function onDisconnected() {
   retry();
 }
 
-async function retry() {
-  // reconnect to the same adapter without asking again
-  for (let i = 0; i < 60 && wanted && state.status === 'lost' && link; i++) {
-    await sleep(5000);
-    if (!wanted || state.status !== 'lost' || !link) return;
-    try {
-      await open(await link.reopen());
-      return;
-    } catch {
-      set({ status: 'lost' });
+/**
+ * Reconnect to the same adapter without asking again. Keeps trying for as long
+ * as the user wants the connection: every 5 s for the first 5 minutes, then
+ * every 15 s.
+ */
+async function retry(now = false) {
+  if (retrying) return;
+  retrying = true;
+  try {
+    for (let i = 0; wanted && state.status === 'lost' && link; i++) {
+      if (!(now && i === 0)) await sleep(i < 60 ? 5000 : 15000);
+      if (!wanted || state.status !== 'lost' || !link) return;
+      try {
+        await open(await link.reopen(), true);
+        if ((state.status as ObdStatus) === 'connected') return;
+      } catch {
+        set({ status: 'lost' });
+      }
     }
+  } finally {
+    retrying = false;
   }
 }
+
+// Back on screen: the phone may have paused the app and dropped the adapter.
+// Read the battery right away, or reconnect without waiting for the next try.
+AppState.addEventListener('change', (st) => {
+  if (st !== 'active' || !wanted) return;
+  if (state.status === 'connected') {
+    idleTicks = -1;
+    if (pollTimer) clearTimeout(pollTimer);
+    poll();
+  } else if (state.status === 'lost' && !retrying) {
+    retry(true);
+  }
+});
 
 /**
  * Connect an adapter. On the web the browser shows its picker (must be called

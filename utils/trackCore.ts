@@ -651,8 +651,12 @@ export function obdBattery(s: TripState, value: number, now: number) {
   // charged, or a new stretch after a long break in readings: start measuring again
   if (last && v >= last.soc + CHARGE_JUMP_PCT) obd.samples = [];
   const tail = obd.samples[obd.samples.length - 1];
+  // No GPS right now (tunnel, phone lost the signal): the km are not counted yet,
+  // so the battery used meanwhile must not be booked at the old distance. The
+  // next reading after the km are back spreads it over the missing stretch.
+  const gpsOut = s.phase === 'driving' && s.lastSignalAt > 0 && now - s.lastSignalAt > 12000;
   if (!tail || s.distanceKm - tail.km >= 0.2) obd.samples.push({ km: s.distanceKm, soc: v });
-  else tail.soc = v;
+  else if (!gpsOut) tail.soc = v;
   // keep about the last 60 km
   while (obd.samples.length > 2 && s.distanceKm - obd.samples[1].km > 60) obd.samples.shift();
   s.batteryAnchor = v;
