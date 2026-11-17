@@ -1,0 +1,47 @@
+diff --git a/node_modules/expo-live-activity/ios-files/LiveActivityWidget.swift b/node_modules/expo-live-activity/ios-files/LiveActivityWidget.swift
+index 24cd8c5..723e7d8 100644
+--- a/node_modules/expo-live-activity/ios-files/LiveActivityWidget.swift
++++ b/node_modules/expo-live-activity/ios-files/LiveActivityWidget.swift
+@@ -83,6 +83,15 @@ struct LiveActivityWidget: Widget {
+           resizableImage(imageName: dynamicIslandImageName)
+             .frame(maxWidth: 23, maxHeight: 23)
+             .applyWidgetURL(from: context.attributes.deepLinkUrl)
++        } else {
++          // Range Pilot: no image, show the title (the range) in the compact view,
++          // which is also what CarPlay and the Watch show
++          Text(context.state.title)
++            .font(.system(size: 15))
++            .fontWeight(.semibold)
++            .minimumScaleFactor(0.7)
++            .lineLimit(1)
++            .applyWidgetURL(from: context.attributes.deepLinkUrl)
+         }
+       } compactTrailing: {
+         if let date = context.state.timerEndDateInMilliseconds {
+@@ -91,6 +100,14 @@ struct LiveActivityWidget: Widget {
+             timerType: context.attributes.timerType ?? .circular,
+             progressViewTint: context.attributes.progressViewTint
+           ).applyWidgetURL(from: context.attributes.deepLinkUrl)
++        } else if let progress = context.state.progress {
++          // Range Pilot: battery % in the accent colour
++          Text("\(Int((progress * 100).rounded()))%")
++            .font(.system(size: 15))
++            .fontWeight(.semibold)
++            .lineLimit(1)
++            .foregroundStyle(context.attributes.progressViewTint.map { Color(hex: $0) } ?? Color.white)
++            .applyWidgetURL(from: context.attributes.deepLinkUrl)
+         }
+       } minimal: {
+         if let date = context.state.timerEndDateInMilliseconds {
+@@ -99,6 +116,11 @@ struct LiveActivityWidget: Widget {
+             timerType: context.attributes.timerType ?? .circular,
+             progressViewTint: context.attributes.progressViewTint
+           ).applyWidgetURL(from: context.attributes.deepLinkUrl)
++        } else if let progress = context.state.progress {
++          Text("\(Int((progress * 100).rounded()))")
++            .font(.system(size: 13))
++            .fontWeight(.semibold)
++            .foregroundStyle(context.attributes.progressViewTint.map { Color(hex: $0) } ?? Color.white)
+         }
+       }
+     }
