@@ -304,7 +304,7 @@ export default function HomeScreen() {
           </Text>
           {obd.charging && (
             <View style={styles.heroCharge}>
-              <ChargingBadge size={40} />
+              <ChargingBadge size={52} />
             </View>
           )}
         </View>

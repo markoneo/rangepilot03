@@ -1007,7 +1007,7 @@ const styles = StyleSheet.create({
   },
   heroTop: { flexDirection: 'row', alignItems: 'center' },
   coldSpot: { position: 'absolute', top: 0, right: 0 },
-  chargeSpot: { position: 'absolute', left: -6, top: 142, width: 76, alignItems: 'center' },
+  chargeSpot: { position: 'absolute', left: -12, top: 132, width: 88, alignItems: 'center' },
   flank: { position: 'absolute', top: 40, width: 84, alignItems: 'center' },
   flankValue: { fontSize: 34, lineHeight: 38, fontFamily: F.display, color: C.text, letterSpacing: -1.4 },
   flankLabel: { fontSize: 13, fontFamily: F.semibold, color: C.textDim, marginTop: 0 },

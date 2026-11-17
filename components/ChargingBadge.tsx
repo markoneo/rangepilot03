@@ -4,13 +4,13 @@ import { Zap } from 'lucide-react-native';
 import { C, F } from '@/constants/theme';
 
 /** Shown only while the car is charging: a bolt that blinks once a second. */
-export function ChargingBadge({ size = 30 }: { size?: number }) {
+export function ChargingBadge({ size = 40 }: { size?: number }) {
   const v = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     const native = Platform.OS !== 'web';
     const a = Animated.loop(
       Animated.sequence([
-        Animated.timing(v, { toValue: 0.15, duration: 500, easing: Easing.inOut(Easing.quad), useNativeDriver: native }),
+        Animated.timing(v, { toValue: 0.4, duration: 500, easing: Easing.inOut(Easing.quad), useNativeDriver: native }),
         Animated.timing(v, { toValue: 1, duration: 500, easing: Easing.inOut(Easing.quad), useNativeDriver: native }),
       ])
     );
@@ -27,5 +27,5 @@ export function ChargingBadge({ size = 30 }: { size?: number }) {
 
 const s = StyleSheet.create({
   wrap: { alignItems: 'center', gap: 2 },
-  label: { fontSize: 12, fontFamily: F.semibold, color: C.green },
+  label: { fontSize: 14, fontFamily: F.bold, color: C.green },
 });
