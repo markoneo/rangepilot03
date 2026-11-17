@@ -32,6 +32,7 @@ import { getOutsideTempC, COLD_LIMIT_C, coldNoteSeenToday, markColdNoteSeen } fr
 import { ColdChip, COLD_BLUE } from '@/components/ColdChip';
 import { buildProfile, suggest, seasonOf, type Style } from '@/utils/learnedProfile';
 import { useObd } from '@/hooks/useObd';
+import { ChargingBadge } from '@/components/ChargingBadge';
 import { connectObd, disconnectObd, obdOwnPicker } from '@/utils/obd';
 import { ObdPicker } from '@/components/ObdPicker';
 import { Bluetooth } from 'lucide-react-native';
@@ -296,10 +297,17 @@ export default function HomeScreen() {
           <Text style={styles.heroLabel}>Estimated range</Text>
           {cold && <ColdChip tempC={tempC!} onPress={() => setColdOpen((o) => !o)} />}
         </View>
-        <Text style={styles.heroValue}>
-          {Math.round(range)}
-          <Text style={styles.heroUnit}> km</Text>
-        </Text>
+        <View style={styles.heroRow}>
+          <Text style={styles.heroValue}>
+            {Math.round(range)}
+            <Text style={styles.heroUnit}> km</Text>
+          </Text>
+          {obd.charging && (
+            <View style={styles.heroCharge}>
+              <ChargingBadge size={40} />
+            </View>
+          )}
+        </View>
 
         {coldOpen && cold && (
           <View style={styles.cold}>
@@ -545,7 +553,7 @@ export default function HomeScreen() {
                 <Text style={styles.rowTitle}>OBD adapter</Text>
                 <Text style={styles.rowSub}>
                   {obd.status === 'connected'
-                    ? `${obd.name ?? 'Connected'} · live battery %. Unplug it before charging.`
+                    ? `${obd.name ?? 'Connected'} · live battery %. Unplug it if the car stands for days.`
                     : obd.status === 'connecting'
                       ? 'Connecting…'
                       : obd.status === 'lost'
@@ -704,6 +712,8 @@ const styles = StyleSheet.create({
   activeAction: { fontSize: 14, fontFamily: F.bold, color: C.green },
 
   heroTop: { flexDirection: 'row', alignItems: 'center' },
+  heroRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  heroCharge: { width: 110, alignItems: 'center' },
   heroLabel: { fontSize: 12, fontFamily: F.semibold, color: C.textDim, letterSpacing: 1, textTransform: 'uppercase' },
   sectionLabel: { fontSize: 12, fontFamily: F.semibold, color: C.textDim, letterSpacing: 1, textTransform: 'uppercase' },
   heroValue: { fontSize: 92, fontFamily: F.display, color: C.text, letterSpacing: -4.5, lineHeight: 92, marginTop: 6 },

@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, LayoutChangeEvent
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Line, Circle, Rect, G, Text as SvgText } from 'react-native-svg';
-import { ArrowLeft, Activity, Thermometer, Gauge, Route, Award, TrendingUp } from 'lucide-react-native';
+import { ArrowLeft, Activity, Route, Award, TrendingUp } from 'lucide-react-native';
 import {
   loadTrips,
   loadPrefs,
@@ -100,8 +100,25 @@ export default function AnalyticsScreen() {
     const priced = ms.filter((m) => m.trip.pricePerKwh != null || fallback != null);
     const cost =
       priced.length > 0 ? priced.reduce((s, m) => s + m.kwh * (m.trip.pricePerKwh ?? fallback ?? 0), 0) : null;
-    return { km, kwh, secs, cons, longest, best, cost };
-  }, [ms, prefs, charges]);
+    const moving = ms.reduce(
+      (s, m) => s + (m.trip.movingSeconds && m.trip.movingSeconds > 60 ? m.trip.movingSeconds : m.trip.durationSeconds),
+      0
+    );
+    const avgSpeed = moving > 0 ? km / (moving / 3600) : 0;
+    const latest = ms.reduce((a, b) => (b.t > a.t ? b : a));
+    const capacity = latest.trip.batteryCapacity;
+    const fullRange = cons > 0 && capacity > 0 ? (capacity / cons) * 100 : null;
+    // the same number of days just before this period, to compare with
+    let prev: { cons: number; km: number } | null = null;
+    if (period !== 'all') {
+      const span = Number(period) * 86400000;
+      const to = Date.now() - span;
+      const before = all.filter((m) => m.t >= to - span && m.t < to);
+      const pkm = before.reduce((s, m) => s + m.km, 0);
+      if (before.length > 0 && pkm >= 5) prev = { cons: wCons(before), km: pkm };
+    }
+    return { km, kwh, secs, cons, longest, best, cost, avgSpeed, fullRange, prev };
+  }, [ms, all, period, prefs, charges]);
 
   const chargeStats = useMemo(() => {
     const since = period === 'all' ? 0 : Date.now() - Number(period) * 86400000;
@@ -123,18 +140,6 @@ export default function AnalyticsScreen() {
   const breakdowns = useMemo(() => {
     const pick = (f: (m: M) => boolean) => ms.filter(f);
     return [
-      {
-        icon: <Thermometer size={15} color="#34D17A" />,
-        title: 'Temperature',
-        a: { label: 'Below 10°C', ms: pick((m) => m.temp != null && m.temp < 10) },
-        b: { label: 'Above 20°C', ms: pick((m) => m.temp != null && m.temp > 20) },
-      },
-      {
-        icon: <Gauge size={15} color={C.amber} />,
-        title: 'Speed',
-        a: { label: 'Under 60 km/h', ms: pick((m) => m.avgSpeed > 0 && m.avgSpeed < 60) },
-        b: { label: 'Over 90 km/h', ms: pick((m) => m.avgSpeed > 90) },
-      },
       {
         icon: <Route size={15} color={C.green} />,
         title: 'Trip length',
@@ -184,29 +189,62 @@ export default function AnalyticsScreen() {
             <Text style={[styles.emptyBody, { marginTop: 40 }]}>No trips in this period.</Text>
           ) : (
             <>
-              <View style={styles.kpis}>
-                <Kpi value={stats.km.toFixed(0)} unit="km" label="Distance" />
-                <Kpi value={String(ms.length)} label={ms.length === 1 ? 'Trip' : 'Trips'} />
-                <Kpi value={stats.cons.toFixed(1)} unit="kWh/100" label="Avg consumption" color={C.amber} />
-                <Kpi value={stats.kwh.toFixed(1)} unit="kWh" label="Energy" />
-                <Kpi value={fmtHours(stats.secs)} label="Driving time" />
-                {stats.cost != null ? (
-                  <Kpi value={fmtMoney(stats.cost, prefs.currency)} label="Charging cost" color={C.green} />
-                ) : (
-                  <Kpi
-                    value={stats.km > 0 ? ((stats.kwh / stats.km) * 1000).toFixed(0) : '–'}
-                    unit="Wh/km"
-                    label="Efficiency"
-                  />
+              {/* What the car really uses */}
+              <View style={styles.hero}>
+                <Text style={styles.heroLabel}>Average consumption</Text>
+                <View style={styles.heroRow}>
+                  <Text style={styles.heroValue}>{stats.cons.toFixed(1)}</Text>
+                  <Text style={styles.heroUnit}>kWh/100 km</Text>
+                </View>
+                {stats.prev && Math.abs(stats.cons - stats.prev.cons) >= 0.1 ? (
+                  <View style={styles.deltaRow}>
+                    <View
+                      style={[
+                        styles.delta,
+                        { backgroundColor: stats.cons < stats.prev.cons ? C.greenDim : C.amberDim },
+                      ]}
+                    >
+                      <Text style={[styles.deltaText, { color: stats.cons < stats.prev.cons ? C.green : C.amber }]}>
+                        {stats.cons < stats.prev.cons ? '↓' : '↑'} {Math.abs(stats.cons - stats.prev.cons).toFixed(1)}
+                      </Text>
+                    </View>
+                    <Text style={styles.deltaNote}>
+                      {stats.cons < stats.prev.cons ? 'lower' : 'higher'} than the {period} days before
+                    </Text>
+                  </View>
+                ) : null}
+                {stats.fullRange != null && (
+                  <View style={styles.heroFoot}>
+                    <Text style={styles.heroFootValue}>{Math.round(stats.fullRange)} km</Text>
+                    <Text style={styles.heroFootLabel}>on a full battery at this consumption</Text>
+                  </View>
                 )}
               </View>
-              {stats.cost != null && stats.km > 0 && (
-                <Text style={styles.subNote}>
-                  ≈ {fmtMoney((stats.cost / stats.km) * 100, prefs.currency)} per 100 km
-                </Text>
-              )}
 
-              <Text style={styles.section}>Distance</Text>
+              <View style={styles.strip}>
+                <Cell value={stats.km.toFixed(0)} label="km driven" />
+                <Cell value={String(ms.length)} label={ms.length === 1 ? 'trip' : 'trips'} divider />
+                <Cell value={fmtHours(stats.secs)} label="driving" divider />
+              </View>
+              <View style={styles.strip}>
+                <Cell value={stats.kwh.toFixed(0)} label="kWh used" />
+                {stats.cost != null ? (
+                  <>
+                    <Cell value={fmtMoney(stats.cost, prefs.currency)} label="energy cost" color={C.green} divider />
+                    {stats.km > 0 && (
+                      <Cell
+                        value={fmtMoney((stats.cost / stats.km) * 100, prefs.currency)}
+                        label="per 100 km"
+                        divider
+                      />
+                    )}
+                  </>
+                ) : (
+                  <Cell value={stats.avgSpeed.toFixed(0)} label="km/h average" divider />
+                )}
+              </View>
+
+              <Text style={styles.section}>Distance per {period === '7' ? 'day' : 'week'}</Text>
               <View style={styles.card}>
                 <BarChart bars={bars} />
               </View>
@@ -262,7 +300,7 @@ export default function AnalyticsScreen() {
                         t.share > 0 ? (
                           <View
                             key={t.label}
-                            style={{ flex: t.share, backgroundColor: [C.green, C.blue, C.amber][i] }}
+                            style={{ flex: t.share, backgroundColor: [C.green, '#7DD3FC', C.amber][i] }}
                           />
                         ) : null
                       )}
@@ -274,7 +312,7 @@ export default function AnalyticsScreen() {
                           <View
                             style={[
                               styles.splitDot,
-                              { backgroundColor: [C.green, C.blue, C.amber][CHARGE_TYPES.findIndex((x) => x.label === t.label)] },
+                              { backgroundColor: [C.green, '#7DD3FC', C.amber][CHARGE_TYPES.findIndex((x) => x.label === t.label)] },
                             ]}
                           />
                           <Text style={styles.splitLabel}>{t.label}</Text>
@@ -290,13 +328,13 @@ export default function AnalyticsScreen() {
               <Text style={styles.section}>Your real consumption</Text>
               <ProfileTable trips={trips} />
 
-              <Text style={styles.section}>What affects your consumption</Text>
+              <Text style={styles.section}>Short and long trips</Text>
               {breakdowns.map((b) => (
                 <Breakdown key={b.title} {...b} />
               ))}
               <Text style={styles.footer}>
-                Averages are weighted by distance and use real consumption (from the battery % you
-                enter at the end) when available.
+                Averages are weighted by distance and use the real consumption from the battery % (read
+                from the car, or entered at the end of a trip) when available.
               </Text>
             </>
           )}
@@ -406,7 +444,7 @@ function BarChart({ bars }: { bars: Bar[] }) {
           const isLast = i === bars.length - 1;
           return (
             <G key={i}>
-              <Rect x={x} y={y} width={bw} height={h} rx={5} fill={b.km > 0 ? (isLast ? C.blue : '#12261B') : C.border} />
+              <Rect x={x} y={y} width={bw} height={h} rx={5} fill={b.km > 0 ? (isLast ? C.green : '#1F5A3A') : C.border} />
               {b.km > 0 && b.km === max && (
                 <SvgText x={x + bw / 2} y={y - 4} fontSize="10" fill={C.textDim} textAnchor="middle">
                   {Math.round(b.km)}
@@ -473,16 +511,23 @@ function TrendChart({ points, average }: { points: M[]; average: number }) {
   );
 }
 
-function Kpi({ value, unit, label, color = C.text }: { value: string; unit?: string; label: string; color?: string }) {
+function Cell({
+  value,
+  label,
+  color = C.text,
+  divider,
+}: {
+  value: string;
+  label: string;
+  color?: string;
+  divider?: boolean;
+}) {
   return (
-    <View style={styles.kpi}>
-      <View style={styles.valRow}>
-        <Text style={[styles.kpiValue, { color }]} numberOfLines={1}>
-          {value}
-        </Text>
-        {unit ? <Text style={styles.kpiUnit}>{unit}</Text> : null}
-      </View>
-      <Text style={styles.kpiLabel}>{label}</Text>
+    <View style={[styles.cell, divider && styles.cellDivider]}>
+      <Text style={[styles.cellValue, { color }, value.length > 7 && { fontSize: 18 }]} numberOfLines={1}>
+        {value}
+      </Text>
+      <Text style={styles.cellLabel}>{label}</Text>
     </View>
   );
 }
@@ -561,27 +606,53 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 6 },
   back: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 18, fontFamily: F.bold, color: C.text },
+  title: { fontSize: 19, fontFamily: F.display, color: C.text, letterSpacing: -0.3 },
   scroll: { paddingHorizontal: 16, paddingTop: 4 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 },
   emptyTitle: { fontSize: 18, fontFamily: F.bold, color: C.text },
   emptyBody: { fontSize: 14, fontFamily: F.regular, color: C.textDim, textAlign: 'center', lineHeight: 20 },
-  kpis: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
-  kpi: {
-    width: '31.5%',
-    flexGrow: 1,
+  hero: {
     backgroundColor: C.card,
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
+    borderRadius: 22,
+    padding: 18,
     borderWidth: 1,
     borderColor: C.border,
+    marginTop: 14,
   },
-  kpiValue: { fontSize: 20, fontFamily: F.bold, letterSpacing: -0.5 },
-  kpiUnit: { fontSize: 11, fontFamily: F.medium, color: C.textDim },
-  valRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 4 },
-  kpiLabel: { fontSize: 11, fontFamily: F.medium, color: C.textMute, marginTop: 4 },
-  subNote: { fontSize: 12, fontFamily: F.medium, color: C.textMute, marginTop: 8, textAlign: 'right' },
+  heroLabel: { fontSize: 12, fontFamily: F.semibold, color: C.textDim, letterSpacing: 0.6, textTransform: 'uppercase' },
+  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 4 },
+  heroValue: { fontSize: 60, lineHeight: 64, fontFamily: F.display, color: C.text, letterSpacing: -2.2 },
+  heroUnit: { fontSize: 15, fontFamily: F.semibold, color: C.textDim },
+  deltaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  delta: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  deltaText: { fontSize: 13, fontFamily: F.bold },
+  deltaNote: { flex: 1, fontSize: 13, fontFamily: F.medium, color: C.textDim },
+  heroFoot: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    columnGap: 8,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  heroFootValue: { fontSize: 22, lineHeight: 26, fontFamily: F.display, color: C.green, letterSpacing: -0.6 },
+  heroFootLabel: { fontSize: 13, fontFamily: F.medium, color: C.textDim },
+  strip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 18,
+    paddingVertical: 12,
+    marginTop: 10,
+  },
+  cell: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
+  cellDivider: { borderLeftWidth: 1, borderLeftColor: C.border },
+  cellValue: { fontSize: 24, lineHeight: 28, fontFamily: F.display, color: C.text, letterSpacing: -0.6 },
+  cellLabel: { fontSize: 12, fontFamily: F.medium, color: C.textDim, marginTop: 1 },
   section: {
     fontSize: 12,
     fontFamily: F.semibold,
@@ -603,7 +674,7 @@ const styles = StyleSheet.create({
   hl: { flex: 1, backgroundColor: C.card, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: C.border },
   hlTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   hlLabel: { fontSize: 12, fontFamily: F.medium, color: C.textDim },
-  hlPrimary: { fontSize: 18, fontFamily: F.bold, color: C.text, marginTop: 8 },
+  hlPrimary: { fontSize: 20, fontFamily: F.display, color: C.text, marginTop: 8, letterSpacing: -0.4 },
   hlSecondary: { fontSize: 11.5, fontFamily: F.regular, color: C.textMute, marginTop: 3 },
   bdHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   bdTitle: { fontSize: 14, fontFamily: F.semibold, color: C.text },
@@ -611,7 +682,7 @@ const styles = StyleSheet.create({
   bdHalf: { flex: 1 },
   bdRight: { borderLeftWidth: 1, borderLeftColor: C.border, paddingLeft: 14 },
   bdLabel: { fontSize: 12, fontFamily: F.medium, color: C.textDim },
-  bdValue: { fontSize: 22, fontFamily: F.bold, color: C.text, marginTop: 4 },
+  bdValue: { fontSize: 22, fontFamily: F.display, color: C.text, marginTop: 4, letterSpacing: -0.5 },
   bdUnit: { fontSize: 11, fontFamily: F.regular, color: C.textMute, marginTop: 2 },
   bdNote: { fontSize: 12, fontFamily: F.medium, color: C.textDim, marginTop: 10 },
   splitBar: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginTop: 14, backgroundColor: C.border },
@@ -625,7 +696,7 @@ const styles = StyleSheet.create({
   ptCell: { flex: 1, alignItems: 'center' },
   ptHead: { fontSize: 13, fontFamily: F.semibold, color: C.text },
   ptHint: { fontSize: 10.5, fontFamily: F.regular, color: C.textMute, marginTop: 1 },
-  ptValue: { fontSize: 18, fontFamily: F.bold, color: C.text },
+  ptValue: { fontSize: 19, fontFamily: F.display, color: C.text, letterSpacing: -0.4 },
   ptNote: { fontSize: 11.5, fontFamily: F.regular, color: C.textMute, marginTop: 8, lineHeight: 16 },
   footer: { fontSize: 11.5, fontFamily: F.regular, color: C.textMute, marginTop: 8, lineHeight: 17 },
 });

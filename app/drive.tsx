@@ -29,6 +29,7 @@ import { useObd } from '@/hooks/useObd';
 import { connectObd, disconnectObd, obdOwnPicker } from '@/utils/obd';
 import { ObdPicker } from '@/components/ObdPicker';
 import { RangeRing } from '@/components/RangeRing';
+import { ChargingBadge } from '@/components/ChargingBadge';
 import { getCurrentPosition, watchForeground } from '@/utils/geolocation';
 import { createMovingDetector } from '@/utils/movingDetector';
 import { readJSON, kv } from '@/utils/kv';
@@ -416,6 +417,11 @@ export default function DriveScreen() {
             sub={snap.reservePercent > 0 ? `to ${snap.reservePercent}% reserve` : 'to empty'}
             moving={!paused}
           />
+          {obd.charging && (
+            <View style={styles.chargeSpot} pointerEvents="none">
+              <ChargingBadge />
+            </View>
+          )}
           {/* speed and distance sit beside the dial */}
           <View style={[styles.flank, { left: -10 }]} pointerEvents="none">
             <Text style={[styles.flankValue, { color: paused ? C.text : speedColor(snap.speedKmh) }]}>
@@ -1001,6 +1007,7 @@ const styles = StyleSheet.create({
   },
   heroTop: { flexDirection: 'row', alignItems: 'center' },
   coldSpot: { position: 'absolute', top: 0, right: 0 },
+  chargeSpot: { position: 'absolute', left: -6, top: 142, width: 76, alignItems: 'center' },
   flank: { position: 'absolute', top: 40, width: 84, alignItems: 'center' },
   flankValue: { fontSize: 34, lineHeight: 38, fontFamily: F.display, color: C.text, letterSpacing: -1.4 },
   flankLabel: { fontSize: 13, fontFamily: F.semibold, color: C.textDim, marginTop: 0 },

@@ -31,12 +31,14 @@ export interface ObdState {
   at: number | null;
   name: string | null;
   error: string | null;
+  /** the battery % is rising while the car stands still */
+  charging: boolean;
 }
 
 const ENABLED_KEY = 'ev_obd_enabled';
 const POLL_DRIVING_MS = 10000;
 const POLL_IDLE_MS = 30000;
-let state: ObdState = { status: 'off', soc: null, at: null, name: null, error: null };
+let state: ObdState = { status: 'off', soc: null, at: null, name: null, error: null, charging: false };
 const listeners = new Set<() => void>();
 let link: ObdLink | null = null;
 let buffer = '';
@@ -53,6 +55,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function set(patch: Partial<ObdState>) {
   const wasLive = state.status === 'connected';
   state = { ...state, ...patch };
+  // no live value, no charging sign
+  if (state.status !== 'connected' && state.charging) {
+    state.charging = false;
+    chargeBase = null;
+  }
   // lost the adapter mid-drive: the app goes back to predicting the battery
   if (wasLive && state.status !== 'connected' && Trip.getTrip()) Trip.setObdLive(false).catch(() => {});
   listeners.forEach((l) => l());
@@ -151,8 +158,45 @@ async function open(next: ObdLink, again = false) {
   schedule();
 }
 
+/**
+ * Charging = the car's battery % goes up while it is not being driven.
+ * The car reports the % in steps of about 0.4, so the sign appears with the
+ * first step up (a minute or so on a fast charger, a few minutes at home) and
+ * goes away when the % drops, the car drives off, or it has stopped rising.
+ */
+const CHARGE_STEP = 0.3;
+const CHARGE_QUIET_MS = 12 * 60 * 1000;
+const STANDING_MS = 60 * 1000;
+let chargeBase: number | null = null;
+let lastRiseAt = 0;
+let lastMovingAt = 0;
+function detectCharging(soc: number, now: number): boolean {
+  const snap = Trip.getSnapshot(now);
+  if (snap && snap.speedKmh > 5) lastMovingAt = now;
+  if (now - lastMovingAt < STANDING_MS) {
+    // driving (or just stopped): a rise here is regeneration, not charging
+    chargeBase = soc;
+    return false;
+  }
+  if (chargeBase == null) {
+    chargeBase = soc;
+    return false;
+  }
+  if (soc >= chargeBase + CHARGE_STEP) {
+    chargeBase = soc;
+    lastRiseAt = now;
+    return true;
+  }
+  if (soc <= chargeBase - CHARGE_STEP) {
+    chargeBase = soc;
+    return false;
+  }
+  return state.charging && now - lastRiseAt < CHARGE_QUIET_MS;
+}
+
 function gotSoc(soc: number) {
-  set({ soc, at: Date.now() });
+  const now = Date.now();
+  set({ soc, at: now, charging: detectCharging(soc, now) });
   // During a drive the car's value IS the battery, and every reading is kept so
   // the consumption can be measured from the car itself.
   if (Trip.getTrip()) Trip.setObdBattery(soc).catch(() => {});
