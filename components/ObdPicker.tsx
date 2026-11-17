@@ -28,7 +28,10 @@ export function ObdPicker({ visible, onClose }: { visible: boolean; onClose: () 
       <Pressable style={s.overlay} onPress={onClose}>
         <Pressable style={s.card} onPress={(e) => e.stopPropagation()}>
           <Text style={s.title}>Choose your OBD adapter</Text>
-          <Text style={s.body}>Plug the adapter into the car and switch the car on.</Text>
+          <Text style={s.body}>
+            Plug the adapter into the car and switch the car on. The adapter must be Bluetooth LE (BLE); classic
+            Bluetooth adapters do not connect to an iPhone.
+          </Text>
           {error ? (
             <Text style={s.error}>{error}</Text>
           ) : (
