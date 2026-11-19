@@ -18,5 +18,11 @@ class RangePilotCarModule : Module() {
         CarStore.write(context, json)
       }
     }
+
+    // Reserve picked on the car screen since the last call, or -1.
+    Function("takeReserve") {
+      val context = appContext.reactContext
+      if (context != null) CarStore.takePendingReserve(context) else -1
+    }
   }
 }

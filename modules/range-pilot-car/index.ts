@@ -10,12 +10,18 @@ import { requireOptionalNativeModule } from 'expo';
 export interface CarState {
   /** battery % */
   battery: number;
+  /** battery % above the reserve (ring colour) */
+  usable: number;
   rangeKm: number;
   /** kWh/100 km */
   consumption: number;
   capacityKwh: number;
   /** a drive is running */
   driving: boolean;
+  /** reserve in % (0 = off) */
+  reserve: number;
+  /** battery % is read live from the car */
+  obd: boolean;
   lat: number | null;
   lon: number | null;
   /** time of the position (ms) */
@@ -28,7 +34,7 @@ export interface CarState {
 
 const native =
   Platform.OS === 'android'
-    ? requireOptionalNativeModule<{ setState(json: string): void }>('RangePilotCar')
+    ? requireOptionalNativeModule<{ setState(json: string): void; takeReserve?(): number }>('RangePilotCar')
     : null;
 
 export const carScreenAvailable = !!native;
@@ -38,5 +44,15 @@ export function setCarState(state: CarState): void {
     native?.setState(JSON.stringify(state));
   } catch {
     // older build without the car part
+  }
+}
+
+/** Reserve % chosen on the car screen since the last call, or null. */
+export function takeCarReserve(): number | null {
+  try {
+    const v = native?.takeReserve?.();
+    return typeof v === 'number' && v >= 0 ? v : null;
+  } catch {
+    return null;
   }
 }

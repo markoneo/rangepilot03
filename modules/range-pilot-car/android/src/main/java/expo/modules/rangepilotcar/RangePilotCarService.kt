@@ -7,8 +7,8 @@ import androidx.car.app.Session
 import androidx.car.app.validation.HostValidator
 
 /**
- * Range Pilot on the car screen (Android Auto), as a charging-station app:
- * chargers nearby with the battery % on arrival, and navigation to them.
+ * Range Pilot on the car screen (Android Auto): the range dial with battery and
+ * consumption, and chargers nearby with the battery % on arrival.
  */
 class RangePilotCarService : CarAppService() {
   override fun createHostValidator(): HostValidator {
@@ -23,6 +23,6 @@ class RangePilotCarService : CarAppService() {
 
 class RangePilotSession : Session() {
   override fun onCreateScreen(intent: Intent): Screen {
-    return ChargerListScreen(carContext)
+    return RangeScreen(carContext)
   }
 }

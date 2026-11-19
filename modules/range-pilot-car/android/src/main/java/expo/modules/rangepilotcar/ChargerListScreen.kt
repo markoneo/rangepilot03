@@ -174,7 +174,7 @@ class ChargerListScreen(carContext: CarContext) : Screen(carContext), DefaultLif
     val state = CarStore.read(carContext)
     val builder = PlaceListMapTemplate.Builder()
       .setTitle("Chargers nearby")
-      .setHeaderAction(Action.APP_ICON)
+      .setHeaderAction(Action.BACK)
 
     if (PhoneLocation.hasPermission(carContext)) {
       builder.setCurrentLocationEnabled(true)

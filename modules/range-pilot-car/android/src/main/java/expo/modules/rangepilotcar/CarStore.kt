@@ -6,10 +6,16 @@ import org.json.JSONObject
 /** What the phone app last told us about the car. */
 class CarState(
   val battery: Double,
+  /** battery above the reserve (ring colour) */
+  val usable: Double,
   val rangeKm: Double,
   val consumption: Double,
   val capacityKwh: Double,
   val driving: Boolean,
+  /** reserve in % (0 = off) */
+  val reserve: Int,
+  /** battery % is read live from the car (OBD) */
+  val obd: Boolean,
   val lat: Double?,
   val lon: Double?,
   val fixTs: Long,
@@ -20,6 +26,7 @@ class CarState(
 object CarStore {
   private const val PREFS = "rangepilot_car"
   private const val KEY = "state"
+  private const val KEY_RESERVE = "pending_reserve"
 
   fun write(context: Context, json: String) {
     context.applicationContext
@@ -27,6 +34,28 @@ object CarStore {
       .edit()
       .putString(KEY, json)
       .apply()
+  }
+
+  /** Reserve chosen on the car screen that the app has not picked up yet; -1 = none. */
+  fun pendingReserve(context: Context): Int {
+    return context.applicationContext
+      .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .getInt(KEY_RESERVE, -1)
+  }
+
+  fun setPendingReserve(context: Context, value: Int) {
+    context.applicationContext
+      .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .edit()
+      .putInt(KEY_RESERVE, value)
+      .apply()
+  }
+
+  /** Returns the reserve chosen on the car screen and clears it; -1 = none. */
+  fun takePendingReserve(context: Context): Int {
+    val v = pendingReserve(context)
+    if (v >= 0) setPendingReserve(context, -1)
+    return v
   }
 
   fun read(context: Context): CarState? {
@@ -44,10 +73,13 @@ object CarStore {
       val hasPos = !lat.isNaN() && !lon.isNaN()
       CarState(
         battery = battery,
+        usable = o.optDouble("usable", battery),
         rangeKm = o.optDouble("rangeKm", 0.0),
         consumption = consumption,
         capacityKwh = capacity,
         driving = o.optBoolean("driving", false),
+        reserve = o.optInt("reserve", 0),
+        obd = o.optBoolean("obd", false),
         lat = if (hasPos) lat else null,
         lon = if (hasPos) lon else null,
         fixTs = o.optLong("fixTs", 0L),
