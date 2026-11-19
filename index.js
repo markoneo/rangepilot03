@@ -3,4 +3,5 @@
 // OS to deliver locations while the app is backgrounded or killed.
 import './utils/tripTracker';
 import './utils/liveActivity';
+import './utils/carScreen';
 import 'expo-router/entry';

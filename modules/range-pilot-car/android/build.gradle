@@ -1,0 +1,31 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.artcomp.rangepilot'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.rangepilotcar"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+    // Open Charge Map key for the car screen (same variable the app uses).
+    // The app also hands the key over at runtime; this covers a car session
+    // that starts before the app was opened.
+    buildConfigField "String", "OCM_KEY", "\"${(System.getenv('EXPO_PUBLIC_OCM_KEY') ?: '').replaceAll('[^A-Za-z0-9-]', '')}\""
+  }
+  buildFeatures {
+    buildConfig true
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // Android Auto (Car App Library)
+  implementation "androidx.car.app:app:1.7.0"
+  implementation "androidx.car.app:app-projected:1.7.0"
+}
