@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Download, Upload, ShieldCheck } from 'lucide-react-native';
 import { exportBackup, pickBackup, restoreBackup, backupTripCount } from '@/utils/backup';
+import { bubbleAllowed, bubbleAvailable, openBubblePermission } from '@/modules/range-pilot-car';
 import {
   saveCarSettings,
   loadCarSettings,
@@ -33,6 +34,7 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
 
   const [carName, setCarName] = useState('');
+  const [bubble, setBubble] = useState(false);
   const [capacity, setCapacity] = useState('');
   const [price, setPrice] = useState('');
   const [currency, setCurrency] = useState(DEFAULT_PREFS.currency);
@@ -91,6 +93,7 @@ export default function SettingsScreen() {
       setPrice(p.electricityPrice != null ? String(p.electricityPrice) : '');
       setCurrency(p.currency);
       setReserve(p.defaultReserve);
+      setBubble(!!p.rangeBubble);
       setLoading(false);
     })();
   }, []);
@@ -104,7 +107,7 @@ export default function SettingsScreen() {
     if (pr != null && (isNaN(pr) || pr < 0 || pr > 5)) return setError('Electricity price looks wrong (0–5 per kWh).');
     setSaving(true);
     await saveCarSettings({ carName: carName.trim(), batteryCapacity: cap });
-    await savePrefs({ electricityPrice: pr, currency, defaultReserve: reserve });
+    await savePrefs({ ...(await loadPrefs()), electricityPrice: pr, currency, defaultReserve: reserve, rangeBubble: bubble });
     setSaving(false);
     if (router.canGoBack() && !isFirstRun) router.back();
     else router.replace('/');
@@ -168,6 +171,36 @@ export default function SettingsScreen() {
             onChange={setReserve}
           />
         </Card>
+
+        {bubbleAvailable && (
+          <Card>
+            <Label>Range bubble</Label>
+            <Text style={styles.help}>
+              Shows your range and battery in a small bubble on top of Google Maps, Waze or any other app while a
+              drive is running. Drag it where you like; tap it to come back here.
+            </Text>
+            <Chips
+              options={[
+                { label: 'Off', value: 0 },
+                { label: 'On', value: 1 },
+              ]}
+              value={bubble ? 1 : 0}
+              onChange={(v) => {
+                const on = v === 1;
+                setBubble(on);
+                loadPrefs()
+                  .then((p) => savePrefs({ ...p, rangeBubble: on }))
+                  .catch(() => {});
+                if (on && !bubbleAllowed()) openBubblePermission();
+              }}
+            />
+            {bubble && (
+              <Text style={styles.help}>
+                If Android asks, allow Range Pilot to display over other apps, then come back.
+              </Text>
+            )}
+          </Card>
+        )}
 
         <Card>
           <Label>Charging cost (optional)</Label>

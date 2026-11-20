@@ -66,7 +66,13 @@ export type CarDestination =
 
 const native =
   Platform.OS === 'android'
-    ? requireOptionalNativeModule<{ setState(json: string): void; takeReserve?(): number; takeDestination?(): string }>('RangePilotCar')
+    ? requireOptionalNativeModule<{ setState(json: string): void; takeReserve?(): number;
+        takeDestination?(): string;
+        bubbleAllowed?(): boolean;
+        openBubblePermission?(): void;
+        showBubble?(): void;
+        hideBubble?(): void;
+      }>('RangePilotCar')
     : null;
 
 export const carScreenAvailable = !!native;
@@ -101,4 +107,36 @@ export function takeCarDestination(): CarDestination | null {
   } catch {
     return null;
   }
+}
+
+// ---- floating range bubble over other apps (Android) ----
+
+export const bubbleAvailable = !!native?.showBubble;
+
+/** The user has allowed "display over other apps" for Range Pilot. */
+export function bubbleAllowed(): boolean {
+  try {
+    return !!native?.bubbleAllowed?.();
+  } catch {
+    return false;
+  }
+}
+
+/** Opens the system screen where the user allows it. */
+export function openBubblePermission(): void {
+  try {
+    native?.openBubblePermission?.();
+  } catch {}
+}
+
+export function showBubble(): void {
+  try {
+    native?.showBubble?.();
+  } catch {}
+}
+
+export function hideBubble(): void {
+  try {
+    native?.hideBubble?.();
+  } catch {}
 }

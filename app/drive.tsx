@@ -29,6 +29,8 @@ import { useObd } from '@/hooks/useObd';
 import { connectObd, disconnectObd, obdOwnPicker } from '@/utils/obd';
 import { ObdPicker } from '@/components/ObdPicker';
 import { RangeRing } from '@/components/RangeRing';
+import { DriveMapHero } from '@/components/DriveMapHero';
+import { simplifyRoute } from '@/utils/routeProgress';
 import { ChargingBadge } from '@/components/ChargingBadge';
 import { getCurrentPosition, watchForeground } from '@/utils/geolocation';
 import { createMovingDetector } from '@/utils/movingDetector';
@@ -128,12 +130,26 @@ export default function DriveScreen() {
         descentM: el?.descentM ?? 0,
         atDistanceKm: Trip.getTrip()?.distanceKm ?? 0,
         computedAt: Date.now(),
+        points: simplifyRoute(r.points),
       });
     } finally {
       routingRef.current = false;
       setRouting(false);
     }
   };
+
+  // A destination set from the car screen (or by an older version) has no route
+  // line yet: fetch it once, for the map.
+  const linedFor = useRef('');
+  const destKey = trip?.destination ? `${trip.destination.lat},${trip.destination.lon}` : '';
+  const destHasLine = (trip?.destination?.points?.length ?? 0) > 1;
+  useEffect(() => {
+    const d = Trip.getTrip()?.destination;
+    if (!d || destHasLine || linedFor.current === destKey) return;
+    linedFor.current = destKey;
+    routeTo({ name: d.name, address: d.address, lat: d.lat, lon: d.lon }, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destKey, destHasLine]);
 
   // Refresh the route every 10 minutes while driving (traffic / detours).
   useEffect(() => {
@@ -407,40 +423,44 @@ export default function DriveScreen() {
         showsVerticalScrollIndicator={false}
       >
 
-        {/* Range dial */}
-        <View>
-          <RangeRing
-            km={snap.rangeKm}
-            batteryPct={snap.battery}
-            usablePct={snap.usableBattery}
-            label="Range left"
-            sub={snap.reservePercent > 0 ? `to ${snap.reservePercent}% reserve` : 'to empty'}
-            moving={!paused}
-          />
-          {obd.charging && (
-            <View style={styles.chargeSpot} pointerEvents="none">
-              <ChargingBadge />
+        {/* With a destination: the route on a map. Otherwise the range dial. */}
+        {trip.destination && (trip.destination.points?.length ?? 0) > 1 ? (
+          <DriveMapHero trip={trip} snap={snap} paused={paused} />
+        ) : (
+          <View>
+            <RangeRing
+              km={snap.rangeKm}
+              batteryPct={snap.battery}
+              usablePct={snap.usableBattery}
+              label="Range left"
+              sub={snap.reservePercent > 0 ? `to ${snap.reservePercent}% reserve` : 'to empty'}
+              moving={!paused}
+            />
+            {obd.charging && (
+              <View style={styles.chargeSpot} pointerEvents="none">
+                <ChargingBadge />
+              </View>
+            )}
+            {/* speed and distance sit beside the dial */}
+            <View style={[styles.flank, { left: -10 }]} pointerEvents="none">
+              <Text style={[styles.flankValue, { color: paused ? C.text : speedColor(snap.speedKmh) }]}>
+                {paused ? '–' : String(Math.round(snap.speedKmh))}
+              </Text>
+              <Text style={styles.flankLabel}>km/h</Text>
             </View>
-          )}
-          {/* speed and distance sit beside the dial */}
-          <View style={[styles.flank, { left: -10 }]} pointerEvents="none">
-            <Text style={[styles.flankValue, { color: paused ? C.text : speedColor(snap.speedKmh) }]}>
-              {paused ? '–' : String(Math.round(snap.speedKmh))}
-            </Text>
-            <Text style={styles.flankLabel}>km/h</Text>
-          </View>
-          <View style={[styles.flank, { right: -10 }]} pointerEvents="none">
-            <Text style={styles.flankValue}>
-              {snap.distanceKm >= 100 ? snap.distanceKm.toFixed(0) : snap.distanceKm.toFixed(1)}
-            </Text>
-            <Text style={styles.flankLabel}>km driven</Text>
-          </View>
-          {cold && (
-            <View style={styles.coldSpot}>
-              <ColdChip tempC={snap.outsideTempC!} onPress={() => setColdOpen(true)} />
+            <View style={[styles.flank, { right: -10 }]} pointerEvents="none">
+              <Text style={styles.flankValue}>
+                {snap.distanceKm >= 100 ? snap.distanceKm.toFixed(0) : snap.distanceKm.toFixed(1)}
+              </Text>
+              <Text style={styles.flankLabel}>km driven</Text>
             </View>
-          )}
-        </View>
+            {cold && (
+              <View style={styles.coldSpot}>
+                <ColdChip tempC={snap.outsideTempC!} onPress={() => setColdOpen(true)} />
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Reserve: range to 10 %, to 20 %, or to empty */}
         <View style={styles.seg} accessibilityRole="radiogroup">

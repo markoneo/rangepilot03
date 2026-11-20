@@ -3,7 +3,16 @@ import * as Trip from './tripTracker';
 import { loadAppState, loadCarSettings, loadPrefs, savePrefs } from './storage';
 import { destinationRemainingKm, rangeFor } from './trackCore';
 import { estimateArrival, loadRecentPlaces, rememberPlace } from './maps';
-import { carScreenAvailable, setCarState, takeCarDestination, takeCarReserve, type CarState } from '../modules/range-pilot-car';
+import {
+  bubbleAllowed,
+  carScreenAvailable,
+  hideBubble,
+  setCarState,
+  showBubble,
+  takeCarDestination,
+  takeCarReserve,
+  type CarState,
+} from '../modules/range-pilot-car';
 
 /**
  * Android Auto: the car screen (range dial, battery, consumption, chargers
@@ -174,14 +183,38 @@ async function sync(force = false) {
   }
 }
 
+/**
+ * The floating range bubble: shown while a drive is running and the app is in
+ * the background (Google Maps, Waze… in front), when switched on in Settings.
+ */
+let bubbleShown = false;
+export async function syncBubble() {
+  let want = false;
+  try {
+    if (RNAppState.currentState !== 'active' && Trip.getTrip()) {
+      const prefs = await loadPrefs();
+      want = !!prefs.rangeBubble && bubbleAllowed();
+    }
+  } catch {
+    want = false;
+  }
+  if (want === bubbleShown) return;
+  bubbleShown = want;
+  if (want) showBubble();
+  else hideBubble();
+}
+
 if (Platform.OS === 'android' && carScreenAvailable) {
   // also runs with the app in the background: every GPS fix of a drive ends up here
   Trip.subscribe(() => {
     sync();
+    // drive finished while in the background: take the bubble away
+    if (bubbleShown && !Trip.getTrip()) syncBubble();
   });
   setInterval(sync, DRIVE_EVERY_MS);
   RNAppState.addEventListener('change', () => {
     sync(true);
+    syncBubble();
   });
   Trip.loadActiveTrip()
     .catch(() => null)

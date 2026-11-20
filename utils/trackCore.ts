@@ -222,6 +222,8 @@ export interface TripDestination {
   descentM: number;
   /** trip distance (km) at the moment the route was calculated */
   atDistanceKm: number;
+  /** the route line, thinned out, as [lat, lon] — for the map on the drive screen */
+  points?: [number, number][];
   computedAt: number;
 }
 
