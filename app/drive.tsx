@@ -29,6 +29,7 @@ import { useObd } from '@/hooks/useObd';
 import { connectObd, disconnectObd, obdOwnPicker } from '@/utils/obd';
 import { ObdPicker } from '@/components/ObdPicker';
 import { RangeRing } from '@/components/RangeRing';
+import { LiquidFill } from '@/components/LiquidFill';
 import { DriveMapHero } from '@/components/DriveMapHero';
 import { simplifyRoute } from '@/utils/routeProgress';
 import { ChargingBadge } from '@/components/ChargingBadge';
@@ -495,7 +496,7 @@ export default function DriveScreen() {
             accessibilityLabel={`Battery ${shownBattery.toFixed(1)} percent${obdLive ? ', live from your car' : ', tap to set'}`}
           >
             <Text style={styles.tileTitle}>Battery</Text>
-            <BatteryGauge pct={shownBattery} />
+            <BatteryGauge pct={shownBattery} moving={!paused} charging={obd.charging} />
             {obdLive ? (
               <Text style={[styles.tileNote, { color: C.green }]} numberOfLines={1}>
                 Live from car
@@ -846,10 +847,11 @@ function speedColor(kmh: number) {
 }
 
 /** Battery drawing that fills with the charge level; the % is always readable. */
-function BatteryGauge({ pct }: { pct: number }) {
+function BatteryGauge({ pct, moving, charging }: { pct: number; moving: boolean; charging: boolean }) {
   const p = Math.max(0, Math.min(100, pct));
   const color = batteryColor(p);
   const [h, setH] = useState(0);
+  const [w, setW] = useState(0);
   // the number sits inside the fill when it fits, above the fill when the
   // battery is low, and on a dark plate when it would straddle the edge
   const NUM = 58;
@@ -859,8 +861,14 @@ function BatteryGauge({ pct }: { pct: number }) {
   return (
     <View style={styles.gauge}>
       <View style={styles.gaugeCap} />
-      <View style={styles.gaugeBody} onLayout={(e) => setH(e.nativeEvent.layout.height)}>
-        <View style={[styles.gaugeFill, { height: `${p}%`, backgroundColor: color }]} />
+      <View
+        style={styles.gaugeBody}
+        onLayout={(e) => {
+          setH(e.nativeEvent.layout.height);
+          setW(e.nativeEvent.layout.width);
+        }}
+      >
+        <LiquidFill pct={p} color={color} width={w} height={h} moving={moving} charging={charging} />
         <View
           style={[
             styles.gaugeNum,
