@@ -53,7 +53,7 @@ html,body,#map{margin:0;padding:0;width:100%;height:100%;background:#14181c;over
     if(pts.length<2)return;
     var b=new maplibregl.LngLatBounds(pts[0],pts[0]);
     for(var i=1;i<pts.length;i++)b.extend(pts[i]);
-    map.fitBounds(b,{padding:{top:126,bottom:48,left:44,right:44},duration:animate?600:0,maxZoom:15});
+    map.fitBounds(b,{padding:{top:30,bottom:34,left:108,right:40},duration:animate?600:0,maxZoom:15});
   }
   function draw(){
     if(!ready||!data)return;
@@ -74,6 +74,18 @@ html,body,#map{margin:0;padding:0;width:100%;height:100%;background:#14181c;over
       chips.push(new maplibregl.Marker({element:el('chip','<b>⚡</b> '+esc(c.label)),anchor:'bottom',offset:[0,-6]}).setLngLat([c.lon,c.lat]).addTo(map));
     });
     if(!moved)fit(false);
+    declutter();
+  }
+  // labels that would sit on top of each other (or under the dial) are hidden; zooming in brings them back
+  function declutter(){
+    if(!map)return;
+    var kept=[];
+    for(var i=0;i<chips.length;i++){
+      var p=map.project(chips[i].getLngLat()),ok=!(p.x<112&&p.y<126);
+      for(var k=0;ok&&k<kept.length;k++){ if(Math.abs(kept[k].x-p.x)<118&&Math.abs(kept[k].y-p.y)<30)ok=false; }
+      chips[i].getElement().style.display=ok?'':'none';
+      if(ok)kept.push(p);
+    }
   }
   window.__driveMap=function(d){data=d;draw();};
   window.addEventListener('message',function(e){var d=e.data;try{if(typeof d==='string')d=JSON.parse(d);}catch(x){return;} if(d&&d.__driveMap)window.__driveMap(d.__driveMap);});
@@ -89,7 +101,11 @@ html,body,#map{margin:0;padding:0;width:100%;height:100%;background:#14181c;over
       map.addLayer({id:'ok-case',type:'line',source:'ok',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#0B0E11','line-width':10}});
       map.addLayer({id:'ok',type:'line',source:'ok',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#34D17A','line-width':6}});
       ready=true; draw();
+      // the map credit stays, but folded to its small (i) so it does not cover the map
+      var at=document.querySelector('.maplibregl-ctrl-attrib');
+      if(at){at.classList.remove('maplibregl-compact-show');at.removeAttribute('open');}
     });
+    map.on('moveend',declutter);
     map.on('dragstart',function(){moved=true;fitBtn.style.display='flex';});
     map.on('zoomstart',function(e){if(e.originalEvent){moved=true;fitBtn.style.display='flex';}});
   }

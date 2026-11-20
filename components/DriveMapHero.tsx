@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { Navigation } from 'lucide-react-native';
-import { C, F } from '@/constants/theme';
+import { AlertTriangle, CheckCircle2, Navigation, Power, XCircle } from 'lucide-react-native';
+import { C, F, batteryColor } from '@/constants/theme';
+import { ArrivalCard } from '@/components/destination';
+import { LiquidFill } from '@/components/LiquidFill';
+import * as Trip from '@/utils/tripTracker';
 import { DriveMap } from '@/components/DriveMap';
 import { ringColor } from '@/utils/ringColor';
 import { estimateArrival } from '@/utils/maps';
@@ -13,14 +16,46 @@ import type { DriveMapData } from '@/utils/driveMapHtml';
 import type { Snapshot } from '@/utils/tripTracker';
 import { tap } from '@/components/ui';
 
-const MAP_HEIGHT = 340;
+const TILE = 88;
+const RESERVE_OPTIONS = [10, 20, 0];
 
 /**
- * The top of the drive screen while a destination is set: the route on a map
- * (green while the battery lasts, amber on the reserve, dotted red beyond),
- * the range in a small dial, the battery now and on arrival, and Navigate.
+ * The drive screen while a destination is set ("Map" view): everything on one
+ * screen, no scrolling. The route on a map (green while the battery lasts,
+ * amber on the reserve, dotted red beyond) with the range in a small dial;
+ * under it the arrival result in one line, three small tiles (liquid battery,
+ * consumption, km per 10 % + speed), the reserve choice with the OBD button,
+ * and Navigate.
  */
-export function DriveMapHero({ trip, snap, paused }: { trip: TripState; snap: Snapshot; paused: boolean }) {
+export function DriveMapHero({
+  trip,
+  snap,
+  paused,
+  shownBattery,
+  obdLive,
+  charging,
+  obdSupported,
+  obdTone,
+  onObd,
+  onBattery,
+  onConsumption,
+  onChangeDestination,
+}: {
+  trip: TripState;
+  snap: Snapshot;
+  paused: boolean;
+  /** battery % as shown (includes a correction still being typed) */
+  shownBattery: number;
+  obdLive: boolean;
+  charging: boolean;
+  obdSupported: boolean;
+  obdTone: { fg: string; ring: string; label: string };
+  onObd: () => void;
+  onBattery: () => void;
+  onConsumption: () => void;
+  onChangeDestination: () => void;
+}) {
+  const [details, setDetails] = useState(false);
   const dest = trip.destination!;
   const points = (dest.points ?? []) as LatLon[];
   const remaining = destinationRemainingKm(trip) ?? dest.routeKm;
@@ -83,13 +118,29 @@ export function DriveMapHero({ trip, snap, paused }: { trip: TripState; snap: Sn
   ]);
 
   const color = ringColor(snap.usableBattery);
-  const arrival = Math.max(0, Math.min(100, est.arrivalPct));
-  const arrivalColor = est.status === 'ok' ? C.text : est.status === 'tight' ? C.amber : C.red;
+  const st = est.status;
+  const tone = st === 'ok' ? C.green : st === 'tight' ? C.amber : C.red;
+  const toneBg = st === 'ok' ? C.greenDim : st === 'tight' ? C.amberDim : C.redDim;
+  const Verdict = st === 'ok' ? CheckCircle2 : st === 'tight' ? AlertTriangle : XCircle;
+  const headline = st === 'ok' ? 'You’ll make it' : st === 'tight' ? 'Tight — drive gently' : 'Charge on the way';
   const kmPer10 = consumption > 0 ? ((trip.batteryCapacity * 0.1) / consumption) * 100 : 0;
-  const shown = snap.recentConsumption ?? snap.consumption;
+  const shown = obdLive && snap.recentConsumption != null ? snap.recentConsumption : snap.consumption;
+  const consNote = obdLive
+    ? snap.recentConsumption != null
+      ? 'from car'
+      : 'measuring…'
+    : snap.learnConfidence === 'none'
+      ? 'preset'
+      : snap.learnConfidence === 'low'
+        ? 'learning'
+        : 'learned';
+  const batt = Math.max(0, Math.min(100, shownBattery));
+  const battColor = batteryColor(batt);
+  // the number sits on the liquid when the liquid reaches it, otherwise on the dark tile
+  const battInk = batt >= 55 ? C.onAccent : C.text;
 
   return (
-    <View>
+    <View style={styles.root}>
       <View style={styles.map}>
         <DriveMap data={data} />
         <View style={styles.dial} pointerEvents="none">
@@ -99,37 +150,92 @@ export function DriveMapHero({ trip, snap, paused }: { trip: TripState; snap: Sn
         </View>
       </View>
 
-      {/* battery now and on arrival */}
-      <View style={styles.track}>
-        <View style={[styles.fill, { width: `${Math.max(0, Math.min(100, snap.battery))}%`, backgroundColor: color }]} />
-        {snap.reservePercent > 0 && (
-          <View style={[styles.fill, { width: `${Math.min(snap.reservePercent, snap.battery)}%`, backgroundColor: C.amber }]} />
-        )}
-        {est.arrivalPct > 0 && <View style={[styles.mark, { left: `${arrival}%` }]} />}
-      </View>
-      <View style={styles.legend}>
-        <Text style={[styles.legendValue, { color: arrivalColor }]}>
-          {est.arrivalPct < 0 ? 'Not enough' : `${Math.round(est.arrivalPct)}%`}
-          <Text style={styles.legendLabel}>{est.arrivalPct < 0 ? ' to arrive' : ' on arrival'}</Text>
+      {/* arrival in one line; tap for the details, to change or clear the destination */}
+      <TouchableOpacity
+        style={[styles.arrival, { backgroundColor: toneBg }]}
+        onPress={() => {
+          tap();
+          setDetails(true);
+        }}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={`${headline}, arrive with ${Math.round(est.arrivalPct)} percent. Tap for details`}
+      >
+        <Verdict size={17} color={tone} />
+        <Text style={[styles.arrivalText, { color: tone }]} numberOfLines={1}>
+          {headline}
         </Text>
-        <Text style={styles.legendValue}>
-          {Math.round(snap.battery)}%<Text style={styles.legendLabel}> now</Text>
-        </Text>
+        <Text style={[styles.arrivalPct, { color: tone }]}>{Math.max(-99, Math.round(est.arrivalPct))}%</Text>
+      </TouchableOpacity>
+
+      <View style={styles.tiles}>
+        <TouchableOpacity
+          style={styles.battery}
+          onPress={onBattery}
+          disabled={obdLive}
+          activeOpacity={0.8}
+          accessibilityLabel={`Battery ${batt.toFixed(0)} percent${obdLive ? ', live from your car' : ', tap to set'}`}
+        >
+          <LiquidFill pct={batt} color={battColor} width={TILE} height={TILE} moving={!paused} charging={charging} />
+          <Text style={[styles.batteryValue, { color: battInk }]}>{batt.toFixed(0)}</Text>
+          <Text style={[styles.batteryPct, { color: battInk }]}>%</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.tile}
+          onPress={onConsumption}
+          activeOpacity={0.8}
+          accessibilityLabel="Consumption, tap to change"
+        >
+          <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
+            {shown.toFixed(1)}
+          </Text>
+          <Text style={styles.tileLabel}>kWh/100 km</Text>
+          <Text style={[styles.tileNote, obdLive && snap.recentConsumption != null && { color: C.green }]}>{consNote}</Text>
+        </TouchableOpacity>
+        <View style={styles.tile}>
+          <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
+            {kmPer10.toFixed(0)} km
+          </Text>
+          <Text style={styles.tileLabel}>per 10%</Text>
+          <Text style={styles.tileNote}>
+            <Text style={{ color: C.text }}>{paused ? '–' : String(Math.round(snap.speedKmh))}</Text> km/h
+          </Text>
+        </View>
       </View>
 
-      <View style={styles.stats}>
-        <View>
-          <Text style={styles.statValue}>{shown.toFixed(1)}</Text>
-          <Text style={styles.statLabel}>kWh/100 km</Text>
+      <View style={styles.controls}>
+        <View style={styles.seg} accessibilityRole="radiogroup">
+          {RESERVE_OPTIONS.map((v) => {
+            const on = snap.reservePercent === v;
+            return (
+              <TouchableOpacity
+                key={v}
+                style={[styles.segBtn, on && styles.segBtnOn]}
+                onPress={() => {
+                  tap();
+                  Trip.setReserve(v);
+                }}
+                activeOpacity={0.8}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={v === 0 ? 'No reserve' : `Reserve ${v} percent`}
+              >
+                <Text style={[styles.segText, on && styles.segTextOn]}>{v === 0 ? 'Off' : `${v}%`}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
-        <View>
-          <Text style={styles.statValue}>{kmPer10.toFixed(0)} km</Text>
-          <Text style={styles.statLabel}>per 10% battery</Text>
-        </View>
-        <View>
-          <Text style={styles.statValue}>{paused ? '–' : String(Math.round(snap.speedKmh))}</Text>
-          <Text style={styles.statLabel}>km/h</Text>
-        </View>
+        {obdSupported && (
+          <TouchableOpacity
+            style={[styles.power, { borderColor: obdTone.ring }]}
+            onPress={onObd}
+            activeOpacity={0.8}
+            accessibilityRole="switch"
+            accessibilityLabel={`OBD connection, ${obdTone.label}`}
+          >
+            <Power size={20} color={obdTone.fg} strokeWidth={2.4} />
+          </TouchableOpacity>
+        )}
       </View>
 
       <TouchableOpacity
@@ -147,6 +253,29 @@ export function DriveMapHero({ trip, snap, paused }: { trip: TripState; snap: Sn
         <Navigation size={18} color={C.onAccent} strokeWidth={2.4} />
         <Text style={styles.navText}>Navigate</Text>
       </TouchableOpacity>
+
+      {/* the full arrival card: route, energy, change or clear the destination */}
+      <Modal visible={details} transparent animationType="fade" onRequestClose={() => setDetails(false)}>
+        <Pressable style={styles.overlay} onPress={() => setDetails(false)}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <ArrivalCard
+              place={dest}
+              km={remaining}
+              minutes={dest.minutes * frac}
+              estimate={est}
+              reservePct={snap.reservePercent}
+              onChange={() => {
+                setDetails(false);
+                onChangeDestination();
+              }}
+              onClear={() => {
+                setDetails(false);
+                Trip.setDestination(null);
+              }}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -225,8 +354,10 @@ function useRouteChargers(points: LatLon[], routeId: number, pos: LatLon | null,
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1, gap: 10 },
   map: {
-    height: MAP_HEIGHT,
+    flex: 1,
+    minHeight: 150,
     borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: C.card,
@@ -235,8 +366,8 @@ const styles = StyleSheet.create({
   },
   dial: {
     position: 'absolute',
-    left: 12,
-    top: 12,
+    left: 10,
+    top: 10,
     width: 92,
     height: 92,
     borderRadius: 46,
@@ -246,19 +377,65 @@ const styles = StyleSheet.create({
   },
   dialKm: { fontSize: 24, lineHeight: 26, fontFamily: F.display, color: C.text, letterSpacing: -0.6 },
   dialUnit: { fontSize: 12, lineHeight: 14, fontFamily: F.medium, color: C.textDim },
-  track: { height: 14, borderRadius: 7, backgroundColor: C.border, overflow: 'hidden', marginTop: 16 },
-  fill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 7 },
-  mark: { position: 'absolute', top: 0, bottom: 0, width: 3, marginLeft: -1.5, backgroundColor: C.text },
-  legend: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
-  legendValue: { fontSize: 17, fontFamily: F.semibold, color: C.text },
-  legendLabel: { fontSize: 13, fontFamily: F.medium, color: C.textDim },
-  stats: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 },
-  statValue: { fontSize: 22, lineHeight: 26, fontFamily: F.display, color: C.text, letterSpacing: -0.6 },
-  statLabel: { fontSize: 13, fontFamily: F.medium, color: C.textDim },
+  arrival: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 44,
+  },
+  arrivalText: { flex: 1, fontSize: 15, fontFamily: F.semibold },
+  arrivalPct: { fontSize: 20, fontFamily: F.display, letterSpacing: -0.4 },
+  tiles: { flexDirection: 'row', gap: 10, height: TILE },
+  battery: {
+    width: TILE,
+    height: TILE,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: C.cardHi,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  batteryValue: { fontSize: 30, lineHeight: 32, fontFamily: F.display, letterSpacing: -0.8 },
+  batteryPct: { fontSize: 13, lineHeight: 15, fontFamily: F.semibold },
+  tile: {
+    flex: 1,
+    borderRadius: 16,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  tileValue: { fontSize: 22, lineHeight: 26, fontFamily: F.display, color: C.text, letterSpacing: -0.6 },
+  tileLabel: { fontSize: 12, fontFamily: F.medium, color: C.textDim },
+  tileNote: { fontSize: 12, fontFamily: F.medium, color: C.textMute, marginTop: 4 },
+  controls: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  seg: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    padding: 4,
+  },
+  segBtn: { flex: 1, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  segBtnOn: { backgroundColor: C.blue },
+  segText: { fontSize: 15, fontFamily: F.semibold, color: C.text },
+  segTextOn: { color: C.onAccent },
+  power: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.bg,
+  },
   nav: {
-    marginTop: 16,
-    marginBottom: 14,
-    height: 52,
+    height: 50,
     borderRadius: 16,
     backgroundColor: C.blue,
     flexDirection: 'row',
@@ -267,4 +444,5 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   navText: { fontSize: 16, fontFamily: F.semibold, color: C.onAccent },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 18 },
 });

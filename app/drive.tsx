@@ -79,6 +79,8 @@ export default function DriveScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
   const [bgWarning, setBgWarning] = useState<'web' | 'native' | null>(null);
   const [destSheet, setDestSheet] = useState(false);
+  // with a destination set: the map view, or back to the ring view
+  const [view, setView] = useState<'map' | 'ring'>('map');
   const [obdPicker, setObdPicker] = useState(false);
   const [pendingBattery, setPendingBattery] = useState<number | null>(null);
   const pendingRef = useRef<number | null>(null);
@@ -372,6 +374,8 @@ export default function DriveScreen() {
   const shownBattery = pendingBattery ?? snap.battery;
 
   // The round button switches the OBD connection on and off.
+  const hasMap = !!trip.destination && (trip.destination.points?.length ?? 0) > 1;
+  const mapMode = hasMap && view === 'map';
   const obdTone =
     obd.status === 'connected'
       ? { fg: C.green, ring: C.green, label: 'OBD on' }
@@ -405,63 +409,108 @@ export default function DriveScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {trip.carName}
+            {mapMode ? trip.destination!.name : trip.carName}
           </Text>
-          <Text style={styles.headerSub}>{paused ? 'Drive paused' : 'Drive in progress'}</Text>
-        </View>
-        <View style={[styles.gpsPill, { backgroundColor: gps.bg }]}>
-          <View style={[styles.gpsDot, { backgroundColor: gps.fg }]} />
-          <Text style={[styles.gpsText, { color: gps.fg }]} numberOfLines={1}>
-            {gps.label}
+          <Text style={styles.headerSub} numberOfLines={1}>
+            {mapMode ? destLine(trip) : paused ? 'Drive paused' : 'Drive in progress'}
           </Text>
         </View>
+        {hasMap ? (
+          <>
+            {/* GPS state as a dot only: the switch needs the room */}
+            <View style={[styles.gpsDot, { backgroundColor: gps.fg }]} accessibilityLabel={gps.label} />
+            <View style={styles.viewSwitch} accessibilityRole="radiogroup">
+              {(['map', 'ring'] as const).map((v) => {
+                const on = (v === 'map') === mapMode;
+                return (
+                  <TouchableOpacity
+                    key={v}
+                    style={[styles.viewBtn, on && styles.viewBtnOn]}
+                    onPress={() => {
+                      tap();
+                      setView(v);
+                    }}
+                    activeOpacity={0.8}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on }}
+                    accessibilityLabel={v === 'map' ? 'Map view' : 'Ring view'}
+                  >
+                    <Text style={[styles.viewText, on && styles.viewTextOn]}>{v === 'map' ? 'Map' : 'Ring'}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        ) : (
+          <View style={[styles.gpsPill, { backgroundColor: gps.bg }]}>
+            <View style={[styles.gpsDot, { backgroundColor: gps.fg }]} />
+            <Text style={[styles.gpsText, { color: gps.fg }]} numberOfLines={1}>
+              {gps.label}
+            </Text>
+          </View>
+        )}
       </View>
 
       <Toast text={toast?.text ?? null} tone={toast?.tone} />
 
+      {mapMode ? (
+        // With a destination: everything on one screen around the route map (no scrolling)
+        <View style={[styles.mapBody, { paddingBottom: 92 + insets.bottom }]}>
+          <DriveMapHero
+            trip={trip}
+            snap={snap}
+            paused={paused}
+            shownBattery={shownBattery}
+            obdLive={obdLive}
+            charging={obd.charging}
+            obdSupported={obdState.supported}
+            obdTone={obdTone}
+            onObd={onObdButton}
+            onBattery={() => setBatterySheet(true)}
+            onConsumption={() => setConsSheet(true)}
+            onChangeDestination={() => setDestSheet(true)}
+          />
+        </View>
+      ) : (
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: 120 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
 
-        {/* With a destination: the route on a map. Otherwise the range dial. */}
-        {trip.destination && (trip.destination.points?.length ?? 0) > 1 ? (
-          <DriveMapHero trip={trip} snap={snap} paused={paused} />
-        ) : (
-          <View>
-            <RangeRing
-              km={snap.rangeKm}
-              batteryPct={snap.battery}
-              usablePct={snap.usableBattery}
-              label="Range left"
-              sub={snap.reservePercent > 0 ? `to ${snap.reservePercent}% reserve` : 'to empty'}
-              moving={!paused}
-            />
-            {obd.charging && (
-              <View style={styles.chargeSpot} pointerEvents="none">
-                <ChargingBadge />
-              </View>
-            )}
-            {/* speed and distance sit beside the dial */}
-            <View style={[styles.flank, { left: -10 }]} pointerEvents="none">
-              <Text style={[styles.flankValue, { color: paused ? C.text : speedColor(snap.speedKmh) }]}>
-                {paused ? '–' : String(Math.round(snap.speedKmh))}
-              </Text>
-              <Text style={styles.flankLabel}>km/h</Text>
+        {/* Range dial */}
+        <View>
+          <RangeRing
+            km={snap.rangeKm}
+            batteryPct={snap.battery}
+            usablePct={snap.usableBattery}
+            label="Range left"
+            sub={snap.reservePercent > 0 ? `to ${snap.reservePercent}% reserve` : 'to empty'}
+            moving={!paused}
+          />
+          {obd.charging && (
+            <View style={styles.chargeSpot} pointerEvents="none">
+              <ChargingBadge />
             </View>
-            <View style={[styles.flank, { right: -10 }]} pointerEvents="none">
-              <Text style={styles.flankValue}>
-                {snap.distanceKm >= 100 ? snap.distanceKm.toFixed(0) : snap.distanceKm.toFixed(1)}
-              </Text>
-              <Text style={styles.flankLabel}>km driven</Text>
-            </View>
-            {cold && (
-              <View style={styles.coldSpot}>
-                <ColdChip tempC={snap.outsideTempC!} onPress={() => setColdOpen(true)} />
-              </View>
-            )}
+          )}
+          {/* speed and distance sit beside the dial */}
+          <View style={[styles.flank, { left: -10 }]} pointerEvents="none">
+            <Text style={[styles.flankValue, { color: paused ? C.text : speedColor(snap.speedKmh) }]}>
+              {paused ? '–' : String(Math.round(snap.speedKmh))}
+            </Text>
+            <Text style={styles.flankLabel}>km/h</Text>
           </View>
-        )}
+          <View style={[styles.flank, { right: -10 }]} pointerEvents="none">
+            <Text style={styles.flankValue}>
+              {snap.distanceKm >= 100 ? snap.distanceKm.toFixed(0) : snap.distanceKm.toFixed(1)}
+            </Text>
+            <Text style={styles.flankLabel}>km driven</Text>
+          </View>
+          {cold && (
+            <View style={styles.coldSpot}>
+              <ColdChip tempC={snap.outsideTempC!} onPress={() => setColdOpen(true)} />
+            </View>
+          )}
+        </View>
 
         {/* Reserve: range to 10 %, to 20 %, or to empty */}
         <View style={styles.seg} accessibilityRole="radiogroup">
@@ -628,6 +677,7 @@ export default function DriveScreen() {
         )}
 
       </ScrollView>
+      )}
 
       {/* Bottom controls */}
       <View style={[styles.bottom, { paddingBottom: insets.bottom + 12 }]}>
@@ -840,6 +890,16 @@ export default function DriveScreen() {
 }
 
 /** Speed colour: green up to 90 km/h, yellow 90–110, red above 110. */
+/** "419 km · 4 h 34 min" still to go to the destination */
+function destLine(trip: NonNullable<ReturnType<typeof Trip.getTrip>>): string {
+  const d = trip.destination;
+  if (!d) return '';
+  const km = destinationRemainingKm(trip) ?? d.routeKm;
+  const min = d.routeKm > 0 ? (d.minutes * km) / d.routeKm : 0;
+  const time = min >= 60 ? `${Math.floor(min / 60)} h ${Math.round(min % 60)} min` : `${Math.round(min)} min`;
+  return `${km.toFixed(0)} km · ${time}`;
+}
+
 function speedColor(kmh: number) {
   if (kmh > 110) return C.red;
   if (kmh >= 90) return C.amber;
@@ -1011,6 +1071,20 @@ const styles = StyleSheet.create({
   gpsDot: { width: 7, height: 7, borderRadius: 4 },
   gpsText: { fontSize: 12, fontFamily: F.semibold },
   scroll: { paddingHorizontal: 18, paddingTop: 6 },
+  mapBody: { flex: 1, paddingHorizontal: 18, paddingTop: 6 },
+  viewSwitch: {
+    flexDirection: 'row',
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    padding: 3,
+    marginLeft: 10,
+  },
+  viewBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9 },
+  viewBtnOn: { backgroundColor: C.blue },
+  viewText: { fontSize: 13, fontFamily: F.semibold, color: C.textDim },
+  viewTextOn: { color: C.onAccent },
   warn: {
     flexDirection: 'row',
     gap: 10,
