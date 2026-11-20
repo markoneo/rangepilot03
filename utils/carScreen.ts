@@ -1,8 +1,9 @@
 import { AppState as RNAppState, Platform } from 'react-native';
 import * as Trip from './tripTracker';
 import { loadAppState, loadCarSettings, loadPrefs, savePrefs } from './storage';
-import { rangeFor } from './trackCore';
-import { carScreenAvailable, setCarState, takeCarReserve, type CarState } from '../modules/range-pilot-car';
+import { destinationRemainingKm, rangeFor } from './trackCore';
+import { estimateArrival, loadRecentPlaces, rememberPlace } from './maps';
+import { carScreenAvailable, setCarState, takeCarDestination, takeCarReserve, type CarState } from '../modules/range-pilot-car';
 
 /**
  * Android Auto: the car screen (range dial, battery, consumption, chargers
@@ -18,6 +19,8 @@ const IDLE_EVERY_MS = 30000;
 let lastKey = '';
 let lastSentAt = 0;
 let busy = false;
+let recents: CarState['recents'] = [];
+let recentsAt = 0;
 
 async function sync(force = false) {
   if (busy) return;
@@ -39,11 +42,73 @@ async function sync(force = false) {
         await savePrefs({ ...prefs, defaultReserve: picked });
       }
     }
+    // destination picked or cleared on the car screen
+    const picked2 = takeCarDestination();
+    if (picked2) {
+      if (picked2.clear) {
+        if (driving) await Trip.setDestination(null);
+      } else {
+        const { name, address, lat, lon, routeKm, minutes, netM, climbM, descentM } = picked2;
+        await rememberPlace({ name, address, lat, lon });
+        recentsAt = 0;
+        if (driving) {
+          await Trip.setDestination({
+            name,
+            address,
+            lat,
+            lon,
+            routeKm,
+            minutes,
+            netM,
+            climbM,
+            descentM,
+            atDistanceKm: Trip.getTrip()?.distanceKm ?? 0,
+            computedAt: now,
+          });
+        }
+      }
+    }
+    if (now - recentsAt > 60000) {
+      recents = (await loadRecentPlaces()).slice(0, 6);
+      recentsAt = now;
+    }
     snap = Trip.getSnapshot();
     trip = Trip.getTrip();
+    const shared = {
+      ts: now,
+      ocmKey: process.env.EXPO_PUBLIC_OCM_KEY || '',
+      googleKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY || '',
+      recents,
+    };
     let state: CarState;
     if (snap && trip) {
       const fix = trip.lastFix;
+      // same figures as the arrival card on the phone's drive screen
+      const plan = snap.obdLive ? snap.flatConsumption : snap.consumption;
+      let dest: CarState['dest'] = null;
+      const d = trip.destination;
+      if (d) {
+        const remaining = destinationRemainingKm(trip) ?? d.routeKm;
+        const frac = d.routeKm > 0 ? remaining / d.routeKm : 0;
+        const est = estimateArrival({
+          capacityKwh: trip.batteryCapacity,
+          batteryPct: snap.battery,
+          consumption: plan,
+          reservePct: snap.reservePercent,
+          km: remaining,
+          netM: d.netM * frac,
+        });
+        dest = {
+          name: d.name,
+          address: d.address,
+          lat: d.lat,
+          lon: d.lon,
+          remainingKm: remaining,
+          minutes: d.minutes * frac,
+          arrivalPct: est.arrivalPct,
+          status: est.status,
+        };
+      }
       state = {
         battery: Math.max(0, Math.min(100, snap.battery)),
         usable: snap.usableBattery,
@@ -56,8 +121,9 @@ async function sync(force = false) {
         lat: fix ? fix.lat : null,
         lon: fix ? fix.lon : null,
         fixTs: fix ? fix.ts : null,
-        ts: now,
-        ocmKey: process.env.EXPO_PUBLIC_OCM_KEY || '',
+        planConsumption: plan,
+        dest,
+        ...shared,
       };
     } else {
       const [car, app, prefs] = await Promise.all([loadCarSettings(), loadAppState(), loadPrefs()]);
@@ -75,8 +141,9 @@ async function sync(force = false) {
         lat: null,
         lon: null,
         fixTs: null,
-        ts: now,
-        ocmKey: process.env.EXPO_PUBLIC_OCM_KEY || '',
+        planConsumption: app.consumption,
+        dest: null,
+        ...shared,
       };
     }
     // the position moves all the time: only write when something the car shows has changed
@@ -92,6 +159,10 @@ async function sync(force = false) {
       state.lat != null ? state.lat.toFixed(3) : '',
       state.lon != null ? state.lon.toFixed(3) : '',
       state.ocmKey ? 1 : 0,
+      state.googleKey ? 1 : 0,
+      state.planConsumption.toFixed(1),
+      state.recents.map((r) => r.name).join(','),
+      state.dest ? `${state.dest.name}|${Math.round(state.dest.arrivalPct)}|${state.dest.status}|${Math.round(state.dest.remainingKm)}` : '',
     ].join('|');
     if (key === lastKey) return;
     lastKey = key;

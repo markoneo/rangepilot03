@@ -114,4 +114,50 @@ object RingImage {
     p.textSize = 25f
     c.drawText(label, l + 26f, t + 102f, p)
   }
+
+  /**
+   * 420 x 420: the battery now (dim arc) and what is left on arrival (bright
+   * arc) for "Can I make it?" — green when it reaches, amber when tight, red when not.
+   */
+  fun drawArrival(batteryPct: Double, arrivalPct: Double, status: String): Bitmap {
+    val size = 420f
+    val bmp = Bitmap.createBitmap(size.toInt(), size.toInt(), Bitmap.Config.ARGB_8888)
+    val c = Canvas(bmp)
+    val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    val color = if (status == "ok") GREEN else if (status == "tight") AMBER else RED
+
+    p.style = Paint.Style.FILL
+    p.color = BG
+    c.drawRoundRect(RectF(0f, 0f, size, size), 48f, 48f, p)
+
+    val inset = 58f
+    val oval = RectF(inset, inset, size - inset, size - inset)
+    p.style = Paint.Style.STROKE
+    p.strokeWidth = 28f
+    p.color = TRACK
+    c.drawArc(oval, 0f, 360f, false, p)
+    p.strokeCap = Paint.Cap.ROUND
+    val now = Math.max(0.0, Math.min(100.0, batteryPct)).toFloat()
+    if (now > 0f) {
+      p.color = mix(BG, color, 0.35)
+      c.drawArc(oval, -90f, 360f * now / 100f, false, p)
+    }
+    val left = Math.max(0.0, Math.min(100.0, arrivalPct)).toFloat()
+    if (left > 0f) {
+      p.color = color
+      c.drawArc(oval, -90f, 360f * left / 100f, false, p)
+    }
+
+    p.style = Paint.Style.FILL
+    p.textAlign = Paint.Align.CENTER
+    p.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    p.color = if (status == "no") RED else TEXT
+    p.textSize = 104f
+    c.drawText(Math.round(Math.max(0.0, arrivalPct)).toString() + "%", size / 2, size / 2 + 24f, p)
+    p.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+    p.color = DIM
+    p.textSize = 30f
+    c.drawText("on arrival", size / 2, size / 2 + 72f, p)
+    return bmp
+  }
 }

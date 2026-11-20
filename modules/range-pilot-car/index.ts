@@ -30,11 +30,43 @@ export interface CarState {
   ts: number;
   /** Open Charge Map key */
   ocmKey: string;
+  /** consumption the "Can I make it?" estimate plans with */
+  planConsumption: number;
+  googleKey: string;
+  /** destinations used before, newest first */
+  recents: { name: string; address: string; lat: number; lon: number }[];
+  /** destination of the running drive, with the estimate the phone shows */
+  dest: {
+    name: string;
+    address: string;
+    lat: number;
+    lon: number;
+    remainingKm: number;
+    minutes: number;
+    arrivalPct: number;
+    status: 'ok' | 'tight' | 'no';
+  } | null;
 }
+
+/** A destination picked on the car screen (route already calculated there), or a request to clear it. */
+export type CarDestination =
+  | { clear: true }
+  | {
+      clear?: false;
+      name: string;
+      address: string;
+      lat: number;
+      lon: number;
+      routeKm: number;
+      minutes: number;
+      netM: number;
+      climbM: number;
+      descentM: number;
+    };
 
 const native =
   Platform.OS === 'android'
-    ? requireOptionalNativeModule<{ setState(json: string): void; takeReserve?(): number }>('RangePilotCar')
+    ? requireOptionalNativeModule<{ setState(json: string): void; takeReserve?(): number; takeDestination?(): string }>('RangePilotCar')
     : null;
 
 export const carScreenAvailable = !!native;
@@ -52,6 +84,20 @@ export function takeCarReserve(): number | null {
   try {
     const v = native?.takeReserve?.();
     return typeof v === 'number' && v >= 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Destination picked or cleared on the car screen since the last call, or null. */
+export function takeCarDestination(): CarDestination | null {
+  try {
+    const raw = native?.takeDestination?.();
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (d?.clear) return { clear: true };
+    if (typeof d?.lat !== 'number' || typeof d?.lon !== 'number' || typeof d?.routeKm !== 'number') return null;
+    return d as CarDestination;
   } catch {
     return null;
   }

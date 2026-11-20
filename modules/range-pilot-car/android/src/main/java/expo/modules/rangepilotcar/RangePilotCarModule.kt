@@ -24,5 +24,11 @@ class RangePilotCarModule : Module() {
       val context = appContext.reactContext
       if (context != null) CarStore.takePendingReserve(context) else -1
     }
+
+    // Destination picked (JSON) or cleared ({"clear":true}) on the car screen since the last call, or "".
+    Function("takeDestination") {
+      val context = appContext.reactContext
+      if (context != null) CarStore.takePendingDestination(context) else ""
+    }
   }
 }

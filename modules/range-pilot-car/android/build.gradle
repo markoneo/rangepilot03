@@ -14,6 +14,7 @@ android {
     // Open Charge Map key for the car screen (same variable the app uses).
     // The app also hands the key over at runtime; this covers a car session
     // that starts before the app was opened.
+    buildConfigField "String", "GOOGLE_KEY", "\"${(System.getenv('EXPO_PUBLIC_GOOGLE_MAPS_KEY') ?: '').replaceAll('[^A-Za-z0-9_-]', '')}\""
     buildConfigField "String", "OCM_KEY", "\"${(System.getenv('EXPO_PUBLIC_OCM_KEY') ?: '').replaceAll('[^A-Za-z0-9-]', '')}\""
   }
   buildFeatures {

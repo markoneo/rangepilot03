@@ -54,7 +54,9 @@ class RangeScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycle
     if (s == null) return "none"
     return Math.round(s.battery).toString() + "|" + Math.round(s.rangeKm) + "|" +
       String.format(Locale.US, "%.1f", s.consumption) + "|" + Math.round(s.usable) + "|" + s.driving +
-      "|" + s.reserve + "|" + s.obd + "|" + CarStore.pendingReserve(carContext)
+      "|" + s.reserve + "|" + s.obd + "|" + CarStore.pendingReserve(carContext) +
+      "|" + (s.dest?.place?.name ?: "") + "|" + Math.round(s.dest?.arrivalPct ?: 0.0) + "|" + (s.dest?.status ?: "") +
+      "|" + CarStore.pendingDestination(carContext).length
   }
 
   @Suppress("DEPRECATION")
@@ -91,12 +93,30 @@ class RangeScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycle
         )
       }
       pane.addRow(row("Reserve", if (reserve > 0) "$reserve%" else "Off"))
-      pane.addRow(
-        row(
-          "Battery reading",
-          if (state.obd) "Live from the car (OBD)" else if (state.driving) "Estimated" else "No drive running"
+      val to = state.dest
+      val showTo = to != null && !CarStore.pendingDestination(carContext).contains("\"clear\"")
+      // at most four rows fit: without the picture the arrival line takes this one's place
+      if (icon != null || !showTo) {
+        pane.addRow(
+          row(
+            "Battery reading",
+            if (state.obd) "Live from the car (OBD)" else if (state.driving) "Estimated" else "No drive running"
+          )
         )
-      )
+      }
+      if (to != null && showTo) {
+        val pct = Math.round(to.arrivalPct)
+        pane.addRow(
+          row(
+            "Arrival",
+            if (to.status == "no" && to.arrivalPct < 0) {
+              to.place.name + " \u00b7 not enough battery"
+            } else {
+              to.place.name + " \u00b7 " + pct + "% on arrival"
+            }
+          )
+        )
+      }
 
       // Off -> 10% -> 20% -> Off; the phone app picks it up within a few seconds
       val next = if (reserve <= 0) 10 else if (reserve < 20) 20 else 0
@@ -111,10 +131,19 @@ class RangeScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycle
       )
     }
 
+    // "Can I make it?": the answer for the destination already set, or the search for one
+    val dest = state?.dest
+    val pendingDest = CarStore.pendingDestination(carContext)
     pane.addAction(
       Action.Builder()
-        .setTitle("Chargers")
-        .setOnClickListener { screenManager.push(ChargerListScreen(carContext)) }
+        .setTitle("Can I make it?")
+        .setOnClickListener {
+          if (dest != null && !pendingDest.contains("\"clear\"")) {
+            screenManager.push(DestinationResultScreen(carContext, dest.place))
+          } else {
+            screenManager.push(DestinationSearchScreen(carContext))
+          }
+        }
         .build()
     )
 

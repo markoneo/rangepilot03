@@ -3,6 +3,16 @@ package expo.modules.rangepilotcar
 import android.content.Context
 import org.json.JSONObject
 
+/** The destination of the running drive, as the phone app sees it right now. */
+class DestInfo(
+  val place: CarPlace,
+  val remainingKm: Double,
+  val minutes: Double,
+  val arrivalPct: Double,
+  /** "ok" | "tight" | "no" */
+  val status: String
+)
+
 /** What the phone app last told us about the car. */
 class CarState(
   val battery: Double,
@@ -20,13 +30,20 @@ class CarState(
   val lon: Double?,
   val fixTs: Long,
   val ts: Long,
-  val ocmKey: String
+  val ocmKey: String,
+  /** consumption the "Can I make it?" estimate plans with (level-road figure with OBD) */
+  val planConsumption: Double,
+  val googleKey: String,
+  /** destinations used before, newest first */
+  val recents: List<CarPlace>,
+  val dest: DestInfo?
 )
 
 object CarStore {
   private const val PREFS = "rangepilot_car"
   private const val KEY = "state"
   private const val KEY_RESERVE = "pending_reserve"
+  private const val KEY_DEST = "pending_destination"
 
   fun write(context: Context, json: String) {
     context.applicationContext
@@ -71,6 +88,27 @@ object CarStore {
       val lat = o.optDouble("lat", Double.NaN)
       val lon = o.optDouble("lon", Double.NaN)
       val hasPos = !lat.isNaN() && !lon.isNaN()
+      val recents = ArrayList<CarPlace>()
+      val list = o.optJSONArray("recents")
+      if (list != null) {
+        for (i in 0 until list.length()) {
+          val place = place(list.optJSONObject(i))
+          if (place != null) recents.add(place)
+        }
+      }
+      val d = o.optJSONObject("dest")
+      val destPlace = place(d)
+      val dest = if (d != null && destPlace != null) {
+        DestInfo(
+          destPlace,
+          d.optDouble("remainingKm", 0.0),
+          d.optDouble("minutes", 0.0),
+          d.optDouble("arrivalPct", 0.0),
+          d.optString("status", "ok")
+        )
+      } else {
+        null
+      }
       CarState(
         battery = battery,
         usable = o.optDouble("usable", battery),
@@ -84,10 +122,45 @@ object CarStore {
         lon = if (hasPos) lon else null,
         fixTs = o.optLong("fixTs", 0L),
         ts = o.optLong("ts", 0L),
-        ocmKey = o.optString("ocmKey", "")
+        ocmKey = o.optString("ocmKey", ""),
+        planConsumption = o.optDouble("planConsumption", consumption),
+        googleKey = o.optString("googleKey", ""),
+        recents = recents,
+        dest = dest
       )
     } catch (e: Exception) {
       null
     }
+  }
+
+  private fun place(o: JSONObject?): CarPlace? {
+    if (o == null) return null
+    val lat = o.optDouble("lat", Double.NaN)
+    val lon = o.optDouble("lon", Double.NaN)
+    val name = if (o.isNull("name")) "" else o.optString("name", "").trim()
+    if (lat.isNaN() || lon.isNaN() || name.isEmpty()) return null
+    return CarPlace(name, if (o.isNull("address")) "" else o.optString("address", "").trim(), lat, lon)
+  }
+
+  // ---- destination picked or cleared on the car screen, for the app to pick up ----
+
+  fun pendingDestination(context: Context): String {
+    return context.applicationContext
+      .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .getString(KEY_DEST, "") ?: ""
+  }
+
+  fun setPendingDestination(context: Context, json: String) {
+    context.applicationContext
+      .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .edit()
+      .putString(KEY_DEST, json)
+      .apply()
+  }
+
+  fun takePendingDestination(context: Context): String {
+    val v = pendingDestination(context)
+    if (v.isNotEmpty()) setPendingDestination(context, "")
+    return v
   }
 }
