@@ -5,10 +5,20 @@
  * and accepted; otherwise free fallbacks: Photon (OpenStreetMap search) and
  * OSRM (routing). Elevation comes from Open-Meteo (free, no key).
  */
+import { Platform } from 'react-native';
 import { demElevations, elevationStats } from './elevation';
 import { readJSON, writeJSON } from './kv';
 
 const GKEY = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY as string | undefined) || '';
+
+/**
+ * The free map services turn away requests that do not say which app they come
+ * from. On Android the system's default ("okhttp/…") is such an anonymous
+ * name, so the app names itself. Browsers set their own and may not be given
+ * one (it would trigger an extra permission request that these servers refuse).
+ */
+const APP_HEADERS: Record<string, string> =
+  Platform.OS === 'web' ? {} : { 'User-Agent': 'RangePilot/1.0 (https://rangepilot.net; info@artcomp.net)' };
 let googleBlocked = false;
 
 export interface PlaceSuggestion {
@@ -105,11 +115,12 @@ export async function searchPlaces(
   // Free fallback: Photon (OpenStreetMap)
   try {
     const bias = near ? `&lat=${near.lat}&lon=${near.lon}` : '';
-    const res = await fetch(
-      `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6${bias}`
-    );
+    const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6${bias}`, {
+      headers: APP_HEADERS,
+    });
+    if (!res.ok) throw new Error(`photon ${res.status}`);
     const j = await res.json();
-    return (j.features || []).map((f: any, i: number) => {
+    const found: PlaceSuggestion[] = (j.features || []).map((f: any, i: number) => {
       const p = f.properties || {};
       const title = p.name || [p.street, p.housenumber].filter(Boolean).join(' ') || p.city || q;
       const subtitle = [p.street && p.name ? p.street : null, p.city, p.country]
@@ -124,6 +135,34 @@ export async function searchPlaces(
         lon: f.geometry?.coordinates?.[0],
       };
     });
+    if (found.length > 0) return found;
+  } catch {
+    // fall through to the last resort
+  }
+  return searchTowns(q);
+}
+
+/**
+ * Last resort when the address search is not reachable: towns and cities by
+ * name (Open-Meteo, free, no key). No street addresses, but "Ljubljana" works.
+ */
+async function searchTowns(q: string): Promise<PlaceSuggestion[]> {
+  try {
+    const res = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=en&format=json`
+    );
+    if (!res.ok) return [];
+    const j = await res.json();
+    return (j.results || [])
+      .filter((r: any) => typeof r?.latitude === 'number' && typeof r?.longitude === 'number' && r?.name)
+      .map((r: any) => ({
+        id: `town-${r.id ?? `${r.latitude},${r.longitude}`}`,
+        title: r.name,
+        subtitle: [r.admin1, r.country].filter(Boolean).join(', '),
+        source: 'osm' as const,
+        lat: r.latitude,
+        lon: r.longitude,
+      }));
   } catch {
     return [];
   }
@@ -226,8 +265,10 @@ export async function computeRoute(
   }
   try {
     const res = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=full&geometries=polyline`
+      `https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=full&geometries=polyline`,
+      { headers: APP_HEADERS }
     );
+    if (!res.ok) return null;
     const j = await res.json();
     const o = j.routes?.[0];
     if (!o) return null;
