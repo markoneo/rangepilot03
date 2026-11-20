@@ -80,7 +80,7 @@ export interface TripState {
    * battery — nothing is predicted — and consumption is measured from how the
    * car's % moves over distance, so hills and regeneration are included.
    */
-  obd?: { live: boolean; samples: { km: number; soc: number }[] };
+  obd?: { live: boolean; samples: { km: number; soc: number; low?: number }[] };
   /** latest outside temperature (°C) */
   outsideTempC?: number | null;
   /** speed-aware consumption model (absent on drives started by older versions) */
@@ -641,6 +641,10 @@ function obdPlanning(s: TripState, base: number): { cons: number; km: number } |
   return total >= 3 ? { cons: (kwh / total) * 100, km: total } : null;
 }
 
+/** Battery rising by this much (%) within STAND_KM means the car is charging */
+const STAND_CHARGE_PCT = 1;
+const STAND_KM = 0.5;
+
 /** A battery % read from the car. No learning by speed here: the car is the truth. */
 export function obdBattery(s: TripState, value: number, now: number) {
   const m = ensureSpeedModel(s);
@@ -650,13 +654,25 @@ export function obdBattery(s: TripState, value: number, now: number) {
   const last = obd.samples[obd.samples.length - 1];
   // charged, or a new stretch after a long break in readings: start measuring again
   if (last && v >= last.soc + CHARGE_JUMP_PCT) obd.samples = [];
+  // Charging with the readings still live: the battery rises while the car
+  // stands. Regeneration cannot add a whole percent within half a kilometre,
+  // so this is the charger, not the road, and must not count as consumption.
+  let low = v;
+  for (let i = obd.samples.length - 1; i >= 0 && s.distanceKm - obd.samples[i].km < STAND_KM; i--) {
+    low = Math.min(low, obd.samples[i].low ?? obd.samples[i].soc);
+  }
+  if (v - low >= STAND_CHARGE_PCT) obd.samples = [];
   const tail = obd.samples[obd.samples.length - 1];
   // No GPS right now (tunnel, phone lost the signal): the km are not counted yet,
   // so the battery used meanwhile must not be booked at the old distance. The
   // next reading after the km are back spreads it over the missing stretch.
   const gpsOut = s.phase === 'driving' && s.lastSignalAt > 0 && now - s.lastSignalAt > 12000;
   if (!tail || s.distanceKm - tail.km >= 0.2) obd.samples.push({ km: s.distanceKm, soc: v });
-  else if (!gpsOut) tail.soc = v;
+  else if (!gpsOut) {
+    // remember the lowest reading at this spot, to notice the battery rising while standing
+    tail.low = Math.min(tail.low ?? tail.soc, v);
+    tail.soc = v;
+  }
   // keep about the last 60 km
   while (obd.samples.length > 2 && s.distanceKm - obd.samples[1].km > 60) obd.samples.shift();
   s.batteryAnchor = v;
