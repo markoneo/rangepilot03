@@ -1,0 +1,31 @@
+diff --git a/node_modules/@atomiqlab/react-native-mapbox-navigation/ios/MapboxNavigationView.swift b/node_modules/@atomiqlab/react-native-mapbox-navigation/ios/MapboxNavigationView.swift
+index c00efdb..41f2838 100644
+--- a/node_modules/@atomiqlab/react-native-mapbox-navigation/ios/MapboxNavigationView.swift
++++ b/node_modules/@atomiqlab/react-native-mapbox-navigation/ios/MapboxNavigationView.swift
+@@ -264,10 +264,23 @@ class MapboxNavigationView: ExpoView {
+   override func didMoveToWindow() {
+     super.didMoveToWindow()
+     
+-    if window != nil && enabled {
+-      startNavigationIfReady()
++    if window != nil {
++      if enabled {
++        startNavigationIfReady()
++      } else {
++        cleanupNavigation()
++      }
+     } else {
+-      cleanupNavigation()
++      // Range Pilot patch: Mapbox's StyleManager.forceRefreshAppearance() takes
++      // every view out of the window and puts it straight back whenever a
++      // style is applied. Tearing navigation down on that momentary detach
++      // removed the controller that had just been embedded (a black view,
++      // then an endless restart). Only clean up if the view is still off
++      // screen on the next run loop turn.
++      DispatchQueue.main.async { [weak self] in
++        guard let self, self.window == nil else { return }
++        self.cleanupNavigation()
++      }
+     }
+   }
+ 

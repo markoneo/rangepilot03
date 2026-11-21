@@ -2,7 +2,7 @@
   "expo": {
     "name": "Range Pilot",
     "slug": "rangepilot",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "rangepilot",
@@ -72,7 +72,8 @@
           "bluetoothAlwaysPermission": "Range Pilot connects to your OBD adapter to read the battery level from your car."
         }
       ],
-      "expo-live-activity"
+      "expo-live-activity",
+      "./plugins/withMapboxNavIos"
     ],
     "experiments": {
       "typedRoutes": true

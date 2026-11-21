@@ -29,6 +29,9 @@ import { useObd } from '@/hooks/useObd';
 import { connectObd, disconnectObd, obdOwnPicker } from '@/utils/obd';
 import { ObdPicker } from '@/components/ObdPicker';
 import { RangeRing } from '@/components/RangeRing';
+import { LiquidFill } from '@/components/LiquidFill';
+import { DriveMapHero } from '@/components/DriveMapHero';
+import { simplifyRoute } from '@/utils/routeProgress';
 import { ChargingBadge } from '@/components/ChargingBadge';
 import { getCurrentPosition, watchForeground } from '@/utils/geolocation';
 import { createMovingDetector } from '@/utils/movingDetector';
@@ -76,6 +79,8 @@ export default function DriveScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
   const [bgWarning, setBgWarning] = useState<'web' | 'native' | null>(null);
   const [destSheet, setDestSheet] = useState(false);
+  // with a destination set: the map view, or back to the ring view
+  const [view, setView] = useState<'map' | 'ring'>('map');
   const [obdPicker, setObdPicker] = useState(false);
   const [pendingBattery, setPendingBattery] = useState<number | null>(null);
   const pendingRef = useRef<number | null>(null);
@@ -128,12 +133,26 @@ export default function DriveScreen() {
         descentM: el?.descentM ?? 0,
         atDistanceKm: Trip.getTrip()?.distanceKm ?? 0,
         computedAt: Date.now(),
+        points: simplifyRoute(r.points),
       });
     } finally {
       routingRef.current = false;
       setRouting(false);
     }
   };
+
+  // A destination set from the car screen (or by an older version) has no route
+  // line yet: fetch it once, for the map.
+  const linedFor = useRef('');
+  const destKey = trip?.destination ? `${trip.destination.lat},${trip.destination.lon}` : '';
+  const destHasLine = (trip?.destination?.points?.length ?? 0) > 1;
+  useEffect(() => {
+    const d = Trip.getTrip()?.destination;
+    if (!d || destHasLine || linedFor.current === destKey) return;
+    linedFor.current = destKey;
+    routeTo({ name: d.name, address: d.address, lat: d.lat, lon: d.lon }, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destKey, destHasLine]);
 
   // Refresh the route every 10 minutes while driving (traffic / detours).
   useEffect(() => {
@@ -355,6 +374,8 @@ export default function DriveScreen() {
   const shownBattery = pendingBattery ?? snap.battery;
 
   // The round button switches the OBD connection on and off.
+  const hasMap = !!trip.destination && (trip.destination.points?.length ?? 0) > 1;
+  const mapMode = hasMap && view === 'map';
   const obdTone =
     obd.status === 'connected'
       ? { fg: C.green, ring: C.green, label: 'OBD on' }
@@ -388,20 +409,69 @@ export default function DriveScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {trip.carName}
+            {mapMode ? trip.destination!.name : trip.carName}
           </Text>
-          <Text style={styles.headerSub}>{paused ? 'Drive paused' : 'Drive in progress'}</Text>
-        </View>
-        <View style={[styles.gpsPill, { backgroundColor: gps.bg }]}>
-          <View style={[styles.gpsDot, { backgroundColor: gps.fg }]} />
-          <Text style={[styles.gpsText, { color: gps.fg }]} numberOfLines={1}>
-            {gps.label}
+          <Text style={styles.headerSub} numberOfLines={1}>
+            {mapMode ? destLine(trip) : paused ? 'Drive paused' : 'Drive in progress'}
           </Text>
         </View>
+        {hasMap ? (
+          <>
+            {/* GPS state as a dot only: the switch needs the room */}
+            <View style={[styles.gpsDot, { backgroundColor: gps.fg }]} accessibilityLabel={gps.label} />
+            <View style={styles.viewSwitch} accessibilityRole="radiogroup">
+              {(['map', 'ring'] as const).map((v) => {
+                const on = (v === 'map') === mapMode;
+                return (
+                  <TouchableOpacity
+                    key={v}
+                    style={[styles.viewBtn, on && styles.viewBtnOn]}
+                    onPress={() => {
+                      tap();
+                      setView(v);
+                    }}
+                    activeOpacity={0.8}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on }}
+                    accessibilityLabel={v === 'map' ? 'Map view' : 'Ring view'}
+                  >
+                    <Text style={[styles.viewText, on && styles.viewTextOn]}>{v === 'map' ? 'Map' : 'Ring'}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        ) : (
+          <View style={[styles.gpsPill, { backgroundColor: gps.bg }]}>
+            <View style={[styles.gpsDot, { backgroundColor: gps.fg }]} />
+            <Text style={[styles.gpsText, { color: gps.fg }]} numberOfLines={1}>
+              {gps.label}
+            </Text>
+          </View>
+        )}
       </View>
 
       <Toast text={toast?.text ?? null} tone={toast?.tone} />
 
+      {mapMode ? (
+        // With a destination: everything on one screen around the route map (no scrolling)
+        <View style={[styles.mapBody, { paddingBottom: 92 + insets.bottom }]}>
+          <DriveMapHero
+            trip={trip}
+            snap={snap}
+            paused={paused}
+            shownBattery={shownBattery}
+            obdLive={obdLive}
+            charging={obd.charging}
+            obdSupported={obdState.supported}
+            obdTone={obdTone}
+            onObd={onObdButton}
+            onBattery={() => setBatterySheet(true)}
+            onConsumption={() => setConsSheet(true)}
+            onChangeDestination={() => setDestSheet(true)}
+          />
+        </View>
+      ) : (
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: 120 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
@@ -475,7 +545,7 @@ export default function DriveScreen() {
             accessibilityLabel={`Battery ${shownBattery.toFixed(1)} percent${obdLive ? ', live from your car' : ', tap to set'}`}
           >
             <Text style={styles.tileTitle}>Battery</Text>
-            <BatteryGauge pct={shownBattery} />
+            <BatteryGauge pct={shownBattery} moving={!paused} charging={obd.charging} />
             {obdLive ? (
               <Text style={[styles.tileNote, { color: C.green }]} numberOfLines={1}>
                 Live from car
@@ -607,6 +677,7 @@ export default function DriveScreen() {
         )}
 
       </ScrollView>
+      )}
 
       {/* Bottom controls */}
       <View style={[styles.bottom, { paddingBottom: insets.bottom + 12 }]}>
@@ -819,6 +890,16 @@ export default function DriveScreen() {
 }
 
 /** Speed colour: green up to 90 km/h, yellow 90–110, red above 110. */
+/** "419 km · 4 h 34 min" still to go to the destination */
+function destLine(trip: NonNullable<ReturnType<typeof Trip.getTrip>>): string {
+  const d = trip.destination;
+  if (!d) return '';
+  const km = destinationRemainingKm(trip) ?? d.routeKm;
+  const min = d.routeKm > 0 ? (d.minutes * km) / d.routeKm : 0;
+  const time = min >= 60 ? `${Math.floor(min / 60)} h ${Math.round(min % 60)} min` : `${Math.round(min)} min`;
+  return `${km.toFixed(0)} km · ${time}`;
+}
+
 function speedColor(kmh: number) {
   if (kmh > 110) return C.red;
   if (kmh >= 90) return C.amber;
@@ -826,33 +907,26 @@ function speedColor(kmh: number) {
 }
 
 /** Battery drawing that fills with the charge level; the % is always readable. */
-function BatteryGauge({ pct }: { pct: number }) {
+function BatteryGauge({ pct, moving, charging }: { pct: number; moving: boolean; charging: boolean }) {
   const p = Math.max(0, Math.min(100, pct));
   const color = batteryColor(p);
   const [h, setH] = useState(0);
-  // the number sits inside the fill when it fits, above the fill when the
-  // battery is low, and on a dark plate when it would straddle the edge
-  const NUM = 58;
-  const fillPx = (h * p) / 100;
-  const place = h === 0 || fillPx >= NUM ? 'fill' : h - fillPx >= NUM ? 'empty' : 'middle';
-  const ink = place === 'fill' ? C.onAccent : C.text;
+  const [w, setW] = useState(0);
   return (
     <View style={styles.gauge}>
       <View style={styles.gaugeCap} />
-      <View style={styles.gaugeBody} onLayout={(e) => setH(e.nativeEvent.layout.height)}>
-        <View style={[styles.gaugeFill, { height: `${p}%`, backgroundColor: color }]} />
-        <View
-          style={[
-            styles.gaugeNum,
-            place === 'fill'
-              ? { bottom: Math.max(2, (fillPx - NUM) / 2) }
-              : place === 'empty'
-                ? { top: Math.max(2, (h - fillPx - NUM) / 2) }
-                : styles.gaugeNumMid,
-          ]}
-        >
-          <Text style={[styles.gaugeValue, { color: ink }]}>{p.toFixed(0)}</Text>
-          <Text style={[styles.gaugePct, { color: ink }]}>%</Text>
+      <View
+        style={styles.gaugeBody}
+        onLayout={(e) => {
+          setH(e.nativeEvent.layout.height);
+          setW(e.nativeEvent.layout.width);
+        }}
+      >
+        <LiquidFill pct={p} color={color} width={w} height={h} moving={moving} charging={charging} />
+        {/* always in the middle, straight on the liquid, like the tile on the map view */}
+        <View style={styles.gaugeNum} pointerEvents="none">
+          <Text style={styles.gaugeValue}>{p.toFixed(0)}</Text>
+          <Text style={styles.gaugePct}>%</Text>
         </View>
       </View>
     </View>
@@ -983,6 +1057,20 @@ const styles = StyleSheet.create({
   gpsDot: { width: 7, height: 7, borderRadius: 4 },
   gpsText: { fontSize: 12, fontFamily: F.semibold },
   scroll: { paddingHorizontal: 18, paddingTop: 6 },
+  mapBody: { flex: 1, paddingHorizontal: 18, paddingTop: 6 },
+  viewSwitch: {
+    flexDirection: 'row',
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    padding: 3,
+    marginLeft: 10,
+  },
+  viewBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9 },
+  viewBtnOn: { backgroundColor: C.blue },
+  viewText: { fontSize: 13, fontFamily: F.semibold, color: C.textDim },
+  viewTextOn: { color: C.onAccent },
   warn: {
     flexDirection: 'row',
     gap: 10,
@@ -1079,18 +1167,27 @@ const styles = StyleSheet.create({
   gaugeCap: { width: 34, height: 7, backgroundColor: C.borderHi, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
   gaugeBody: { flex: 1, alignSelf: 'stretch', backgroundColor: C.cardHi, borderRadius: 16, overflow: 'hidden' },
   gaugeFill: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  gaugeNum: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
-  gaugeNumMid: {
-    top: 4,
-    bottom: 4,
-    left: 10,
-    right: 10,
-    justifyContent: 'center',
-    borderRadius: 12,
-    backgroundColor: 'rgba(11,14,17,0.78)',
+  gaugeNum: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  // white with a soft dark edge: readable on the green liquid and on the dark tile
+  gaugeValue: {
+    fontSize: 38,
+    lineHeight: 40,
+    fontFamily: F.display,
+    letterSpacing: -1.4,
+    color: C.text,
+    textShadowColor: 'rgba(6,19,12,0.55)',
+    textShadowRadius: 6,
+    textShadowOffset: { width: 0, height: 1 },
   },
-  gaugeValue: { fontSize: 38, lineHeight: 40, fontFamily: F.display, letterSpacing: -1.4 },
-  gaugePct: { fontSize: 13, lineHeight: 14, fontFamily: F.bold },
+  gaugePct: {
+    fontSize: 13,
+    lineHeight: 14,
+    fontFamily: F.bold,
+    color: C.text,
+    textShadowColor: 'rgba(6,19,12,0.55)',
+    textShadowRadius: 4,
+    textShadowOffset: { width: 0, height: 1 },
+  },
   strip: {
     flexDirection: 'row',
     alignItems: 'center',

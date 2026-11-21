@@ -12,7 +12,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MapPin, Search, X, Clock, Mountain, RotateCcw, Gauge, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react-native';
+import { MapPin, Search, X, Clock, Gauge, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react-native';
 import { C, F } from '@/constants/theme';
 import {
   searchPlaces,
@@ -169,8 +169,6 @@ export function ArrivalCard({
   place,
   km,
   minutes,
-  climbM,
-  descentM,
   estimate,
   reservePct,
   loading,
@@ -181,8 +179,9 @@ export function ArrivalCard({
   place: { name: string; address?: string };
   km: number | null;
   minutes: number | null;
-  climbM: number | null;
-  descentM: number | null;
+  /** no longer shown (kept so callers need no change) */
+  climbM?: number | null;
+  descentM?: number | null;
   estimate: ArrivalEstimate | null;
   reservePct: number;
   loading?: boolean;
@@ -240,17 +239,6 @@ export function ArrivalCard({
           </Text>
 
           <View style={s.facts}>
-            {climbM != null && descentM != null && (climbM > 30 || descentM > 30) && (
-              <Fact icon={<Mountain size={14} color={C.textDim} />} text={`↑${climbM} m ↓${descentM} m`} />
-            )}
-            <Fact
-              icon={<RotateCcw size={14} color={C.textDim} />}
-              text={
-                estimate.roundTripPct >= reservePct
-                  ? `Return without charging: ${Math.round(estimate.roundTripPct)}%`
-                  : 'Return needs a charge'
-              }
-            />
             {st !== 'ok' && estimate.maxConsumption != null && estimate.maxConsumption >= 8 && (
               <Fact
                 icon={<Gauge size={14} color={C.textDim} />}

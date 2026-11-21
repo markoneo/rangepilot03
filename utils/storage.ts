@@ -66,6 +66,8 @@ export interface UserPrefs {
   currency: string;
   /** Default "arrive with" reserve in % (0 = off). */
   defaultReserve: number;
+  /** Android: show the range in a floating bubble over other apps while driving */
+  rangeBubble?: boolean;
 }
 
 export const DEFAULT_PREFS: UserPrefs = {
