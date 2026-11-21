@@ -9,6 +9,8 @@ export type DriveNavProps = {
   chargers: { lat: number; lon: number; label: string }[];
   onClose: () => void;
   onError: (message: string) => void;
+  /** the route is on screen and guidance has started */
+  onStarted?: () => void;
   children?: ReactNode;
 };
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +28,14 @@ export default function NavigateScreen() {
   });
   const [error, setError] = useState<string | null>(null);
   const [chargers] = useState(() => getNavChargers());
+  const [started, setStarted] = useState(false);
+  const startedRef = useRef(false);
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (started) return;
+    const t = setTimeout(() => setSlow(true), 15000);
+    return () => clearTimeout(t);
+  }, [started]);
 
   useEffect(() => {
     const update = () => setSnap(Trip.getSnapshot());
@@ -89,7 +97,26 @@ export default function NavigateScreen() {
 
   return (
     <View style={styles.root}>
-      <DriveNav origin={origin} dest={dest} chargers={chargers} onClose={close} onError={setError} />
+      <DriveNav
+        origin={origin}
+        dest={dest}
+        chargers={chargers}
+        onClose={close}
+        // once guidance runs, a failed re-route must not take the map away
+        onError={(m) => !startedRef.current && setError(m)}
+        onStarted={() => {
+          startedRef.current = true;
+          setStarted(true);
+        }}
+      />
+
+      {!started && (
+        <View style={styles.wait} pointerEvents="none">
+          <ActivityIndicator color={C.blue} />
+          <Text style={styles.msg}>{slow ? 'Still no route after 15 seconds.' : 'Finding the route…'}</Text>
+          {slow && <Text style={styles.hint}>Close and send a screenshot of this screen.</Text>}
+        </View>
+      )}
 
       {/* the car's numbers, under the turn banner */}
       <View style={[styles.chip, { top: insets.top + 132 }]} pointerEvents="none">
@@ -124,6 +151,8 @@ export default function NavigateScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   center: { flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 },
+  wait: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
+  hint: { fontSize: 13, fontFamily: F.medium, color: C.text, opacity: 0.6, textAlign: 'center' },
   msg: { fontSize: 15, fontFamily: F.medium, color: C.text, textAlign: 'center' },
   back: { height: 46, paddingHorizontal: 22, borderRadius: 14, backgroundColor: C.blue, justifyContent: 'center' },
   backText: { fontSize: 15, fontFamily: F.semibold, color: C.onAccent },
