@@ -1,8 +1,14 @@
 import { useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { C } from '@/constants/theme';
-import { DRIVE_MAP_HTML, type DriveMapData } from '@/utils/driveMapHtml';
+import { DRIVE_MAP_HTML, driveMapHtml, type DriveMapData } from '@/utils/driveMapHtml';
+
+// iPhone: Mapbox's map (the build carries a Mapbox token). Android keeps the free map.
+const HTML =
+  Platform.OS === 'ios' && process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN
+    ? driveMapHtml(process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN)
+    : DRIVE_MAP_HTML;
 
 /** The drive-screen map in the apps: the map page in a WebView (see utils/driveMapHtml.ts). */
 export function DriveMap({ data }: { data: DriveMapData }) {
@@ -27,7 +33,7 @@ export function DriveMap({ data }: { data: DriveMapData }) {
       <WebView
         ref={ref}
         originWhitelist={['*']}
-        source={{ html: DRIVE_MAP_HTML, baseUrl: 'https://app.rangepilot.net/' }}
+        source={{ html: HTML, baseUrl: 'https://app.rangepilot.net/' }}
         style={styles.web}
         javaScriptEnabled
         domStorageEnabled
