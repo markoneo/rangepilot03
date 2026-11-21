@@ -15,6 +15,9 @@ import { kmAlongRoute, splitRoute, type LatLon } from '@/utils/routeProgress';
 import type { DriveMapData } from '@/utils/driveMapHtml';
 import type { Snapshot } from '@/utils/tripTracker';
 import { tap } from '@/components/ui';
+import { useRouter } from 'expo-router';
+import { navAvailable } from '@/components/DriveNav';
+import { setNavChargers } from '@/utils/navShare';
 
 const TILE = 88;
 const RESERVE_OPTIONS = [10, 20, 0];
@@ -55,6 +58,7 @@ export function DriveMapHero({
   onConsumption: () => void;
   onChangeDestination: () => void;
 }) {
+  const router = useRouter();
   const [details, setDetails] = useState(false);
   const dest = trip.destination!;
   const points = (dest.points ?? []) as LatLon[];
@@ -116,6 +120,15 @@ export function DriveMapHero({
     snap.reservePercent,
     chargers,
   ]);
+
+  useEffect(() => {
+    setNavChargers(data.chargers.map((c) => ({ lat: c.lat, lon: c.lon, label: c.label })));
+  }, [data]);
+
+  const openMaps = () =>
+    Linking.openURL(
+      `https://www.google.com/maps/dir/?api=1&destination=${dest.lat},${dest.lon}&travelmode=driving`
+    ).catch(() => {});
 
   const color = ringColor(snap.usableBattery);
   const st = est.status;
@@ -238,21 +251,36 @@ export function DriveMapHero({
         )}
       </View>
 
-      <TouchableOpacity
-        style={styles.nav}
-        activeOpacity={0.85}
-        accessibilityRole="button"
-        accessibilityLabel={`Navigate to ${dest.name}`}
-        onPress={() => {
-          tap();
-          Linking.openURL(
-            `https://www.google.com/maps/dir/?api=1&destination=${dest.lat},${dest.lon}&travelmode=driving`
-          ).catch(() => {});
-        }}
-      >
-        <Navigation size={18} color={C.onAccent} strokeWidth={2.4} />
-        <Text style={styles.navText}>Navigate</Text>
-      </TouchableOpacity>
+      <View style={styles.navRow}>
+        <TouchableOpacity
+          style={styles.nav}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={`Navigate to ${dest.name}`}
+          onPress={() => {
+            tap();
+            if (navAvailable) router.push('/navigate' as never);
+            else openMaps();
+          }}
+        >
+          <Navigation size={18} color={C.onAccent} strokeWidth={2.4} />
+          <Text style={styles.navText}>Navigate</Text>
+        </TouchableOpacity>
+        {navAvailable && (
+          <TouchableOpacity
+            style={styles.navAlt}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Open in Google Maps"
+            onPress={() => {
+              tap();
+              openMaps();
+            }}
+          >
+            <Text style={styles.navAltText}>Google Maps</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       {/* the full arrival card: route, energy, change or clear the destination */}
       <Modal visible={details} transparent animationType="fade" onRequestClose={() => setDetails(false)}>
@@ -434,7 +462,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: C.bg,
   },
+  navRow: { flexDirection: 'row', gap: 10 },
+  navAlt: {
+    height: 50,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.borderHi,
+    backgroundColor: C.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navAltText: { fontSize: 14, fontFamily: F.semibold, color: C.text },
   nav: {
+    flex: 1,
     height: 50,
     borderRadius: 16,
     backgroundColor: C.blue,

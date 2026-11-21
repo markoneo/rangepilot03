@@ -124,6 +124,7 @@ export default function RootLayout() {
         <Stack.Screen name="settings" />
         <Stack.Screen name="drive-permission" />
         <Stack.Screen name="drive" />
+        <Stack.Screen name="navigate" options={{ gestureEnabled: false, animation: 'fade' }} />
         <Stack.Screen name="trip-summary" />
         <Stack.Screen name="trip-history" />
         <Stack.Screen name="analytics" />

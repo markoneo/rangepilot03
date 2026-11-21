@@ -11,6 +11,7 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
+    "@atomiqlab/react-native-mapbox-navigation": "3.1.0",
     "@expo-google-fonts/bricolage-grotesque": "^0.4.1",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo/vector-icons": "^15.0.2",
@@ -64,5 +65,14 @@
     "eslint": "^9.0.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": [
+          "@atomiqlab/react-native-mapbox-navigation"
+        ]
+      }
+    }
   }
 }
