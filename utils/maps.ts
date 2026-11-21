@@ -17,6 +17,7 @@ const GKEY = (process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY as string | undefined) || 
  * name, so the app names itself. Browsers set their own and may not be given
  * one (it would trigger an extra permission request that these servers refuse).
  */
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '';
 const APP_HEADERS: Record<string, string> =
   Platform.OS === 'web' ? {} : { 'User-Agent': 'RangePilot/1.0 (https://rangepilot.net; info@artcomp.net)' };
 let googleBlocked = false;
@@ -41,7 +42,7 @@ export interface RouteInfo {
   km: number;
   minutes: number;
   points: [number, number][];
-  source: 'google' | 'osrm';
+  source: 'google' | 'mapbox' | 'osrm';
 }
 
 export interface Elevation {
@@ -262,6 +263,24 @@ export async function computeRoute(
       points: r.polyline?.encodedPolyline ? decodePolyline(r.polyline.encodedPolyline) : [],
       source: 'google',
     };
+  }
+  // iPhone: the same Mapbox routing the in-app navigation uses, so the drive
+  // screen and the navigation agree on distance and time
+  if (Platform.OS === 'ios' && MAPBOX_TOKEN) {
+    try {
+      const res = await fetch(
+        `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${from.lon},${from.lat};${to.lon},${to.lat}` +
+          `?overview=full&geometries=polyline&access_token=${MAPBOX_TOKEN}`
+      );
+      if (res.ok) {
+        const m = (await res.json()).routes?.[0];
+        if (m?.distance != null && m.geometry) {
+          return { km: m.distance / 1000, minutes: m.duration / 60, points: decodePolyline(m.geometry), source: 'mapbox' };
+        }
+      }
+    } catch {
+      // fall through to the free router
+    }
   }
   try {
     const res = await fetch(

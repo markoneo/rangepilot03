@@ -912,12 +912,6 @@ function BatteryGauge({ pct, moving, charging }: { pct: number; moving: boolean;
   const color = batteryColor(p);
   const [h, setH] = useState(0);
   const [w, setW] = useState(0);
-  // the number sits inside the fill when it fits, above the fill when the
-  // battery is low, and on a dark plate when it would straddle the edge
-  const NUM = 58;
-  const fillPx = (h * p) / 100;
-  const place = h === 0 || fillPx >= NUM ? 'fill' : h - fillPx >= NUM ? 'empty' : 'middle';
-  const ink = place === 'fill' ? C.onAccent : C.text;
   return (
     <View style={styles.gauge}>
       <View style={styles.gaugeCap} />
@@ -929,18 +923,10 @@ function BatteryGauge({ pct, moving, charging }: { pct: number; moving: boolean;
         }}
       >
         <LiquidFill pct={p} color={color} width={w} height={h} moving={moving} charging={charging} />
-        <View
-          style={[
-            styles.gaugeNum,
-            place === 'fill'
-              ? { bottom: Math.max(2, (fillPx - NUM) / 2) }
-              : place === 'empty'
-                ? { top: Math.max(2, (h - fillPx - NUM) / 2) }
-                : styles.gaugeNumMid,
-          ]}
-        >
-          <Text style={[styles.gaugeValue, { color: ink }]}>{p.toFixed(0)}</Text>
-          <Text style={[styles.gaugePct, { color: ink }]}>%</Text>
+        {/* always in the middle, straight on the liquid, like the tile on the map view */}
+        <View style={styles.gaugeNum} pointerEvents="none">
+          <Text style={styles.gaugeValue}>{p.toFixed(0)}</Text>
+          <Text style={styles.gaugePct}>%</Text>
         </View>
       </View>
     </View>
@@ -1181,18 +1167,27 @@ const styles = StyleSheet.create({
   gaugeCap: { width: 34, height: 7, backgroundColor: C.borderHi, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
   gaugeBody: { flex: 1, alignSelf: 'stretch', backgroundColor: C.cardHi, borderRadius: 16, overflow: 'hidden' },
   gaugeFill: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  gaugeNum: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
-  gaugeNumMid: {
-    top: 4,
-    bottom: 4,
-    left: 10,
-    right: 10,
-    justifyContent: 'center',
-    borderRadius: 12,
-    backgroundColor: 'rgba(11,14,17,0.78)',
+  gaugeNum: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  // white with a soft dark edge: readable on the green liquid and on the dark tile
+  gaugeValue: {
+    fontSize: 38,
+    lineHeight: 40,
+    fontFamily: F.display,
+    letterSpacing: -1.4,
+    color: C.text,
+    textShadowColor: 'rgba(6,19,12,0.55)',
+    textShadowRadius: 6,
+    textShadowOffset: { width: 0, height: 1 },
   },
-  gaugeValue: { fontSize: 38, lineHeight: 40, fontFamily: F.display, letterSpacing: -1.4 },
-  gaugePct: { fontSize: 13, lineHeight: 14, fontFamily: F.bold },
+  gaugePct: {
+    fontSize: 13,
+    lineHeight: 14,
+    fontFamily: F.bold,
+    color: C.text,
+    textShadowColor: 'rgba(6,19,12,0.55)',
+    textShadowRadius: 4,
+    textShadowOffset: { width: 0, height: 1 },
+  },
   strip: {
     flexDirection: 'row',
     alignItems: 'center',

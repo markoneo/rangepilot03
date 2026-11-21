@@ -149,8 +149,8 @@ export function DriveMapHero({
         : 'learned';
   const batt = Math.max(0, Math.min(100, shownBattery));
   const battColor = batteryColor(batt);
-  // the number sits on the liquid when the liquid reaches it, otherwise on the dark tile
-  const battInk = batt >= 55 ? C.onAccent : C.text;
+  // white with a soft dark edge: readable on the liquid and on the dark tile
+  const battInk = { color: C.text, textShadowColor: 'rgba(6,19,12,0.55)', textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 } };
 
   return (
     <View style={styles.root}>
@@ -190,8 +190,8 @@ export function DriveMapHero({
           accessibilityLabel={`Battery ${batt.toFixed(0)} percent${obdLive ? ', live from your car' : ', tap to set'}`}
         >
           <LiquidFill pct={batt} color={battColor} width={TILE} height={TILE} moving={!paused} charging={charging} />
-          <Text style={[styles.batteryValue, { color: battInk }]}>{batt.toFixed(0)}</Text>
-          <Text style={[styles.batteryPct, { color: battInk }]}>%</Text>
+          <Text style={[styles.batteryValue, battInk]}>{batt.toFixed(0)}</Text>
+          <Text style={[styles.batteryPct, battInk]}>%</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.tile}

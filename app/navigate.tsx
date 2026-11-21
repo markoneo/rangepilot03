@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
-import { X } from 'lucide-react-native';
 import { C, F, batteryColor } from '@/constants/theme';
 import { DriveNav, navAvailable } from '@/components/DriveNav';
 import * as Trip from '@/utils/tripTracker';
@@ -119,7 +118,7 @@ export default function NavigateScreen() {
       )}
 
       {/* the car's numbers, under the turn banner */}
-      <View style={[styles.chip, { top: insets.top + 132 }]} pointerEvents="none">
+      <View style={[styles.chip, { top: insets.top + 152 }]} pointerEvents="none">
         <View style={styles.cell}>
           <Text style={[styles.big, { color: ringColor(snap.usableBattery) }]}>{Math.round(snap.rangeKm)}</Text>
           <Text style={styles.unit}>km range</Text>
@@ -136,14 +135,6 @@ export default function NavigateScreen() {
         </View>
       </View>
 
-      <TouchableOpacity
-        style={[styles.close, { top: insets.top + 132 }]}
-        onPress={close}
-        accessibilityRole="button"
-        accessibilityLabel="Close navigation"
-      >
-        <X size={20} color={C.text} strokeWidth={2.4} />
-      </TouchableOpacity>
     </View>
   );
 }
@@ -172,16 +163,4 @@ const styles = StyleSheet.create({
   big: { fontSize: 19, fontFamily: F.bold },
   unit: { fontSize: 10, fontFamily: F.medium, color: C.text, opacity: 0.65, marginTop: 1 },
   sep: { width: 1, height: 26, backgroundColor: C.borderHi },
-  close: {
-    position: 'absolute',
-    right: 12,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(11,14,17,0.92)',
-    borderWidth: 1,
-    borderColor: C.borderHi,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });
